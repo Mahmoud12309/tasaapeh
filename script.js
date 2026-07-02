@@ -1,7 +1,6 @@
 /**
  * ============================================
- * عداد التسبيح الرقمي - SCRIPT.JS
- * نظام عداد حقيقي 100% مع Cactus API
+ * عداد التسبيح الرقمي - SCRIPT.JS (نسخة مُصلحة)
  * ============================================
  */
 
@@ -22,55 +21,32 @@ const CONFIG = {
     CURRENT_DHIKR_INDEX: 'tasbeeh_dhikr_index',
     CURRENT_DHIKR_COUNT: 'tasbeeh_dhikr_count',
     FIRST_VISIT: 'tasbeeh_first_visit',
-    USER_ID: 'tasbeeh_user_id',
-    API_TOKEN: 'tasbeeh_api_token'
+    USER_ID: 'tasbeeh_user_id'
   },
   SOUND_ENABLED: true,
   SOUND_VOLUME: 0.3,
   VIBRATION_DURATION: 15,
 
-  // ============================================
-  // إعدادات Cactus API - عدّل هذه القيم
-  // ============================================
+  // Cactus API - غيّر ده لعنوانك
   API: {
-    // عنوان خادم Cactus API الخاص بك
-    // مثال: 'https://your-cactus-api.com' أو 'https://api.tasbeeh.app'
     BASE_URL: 'https://firestore.googleapis.com/v1/projects/tasapeh-56e44/databases/(default)/documents
 
-',
-
-    // مفتاح API الخاص بك (اختياري - إذا كان يتطلب مصادقة)
+',  // فاضي = شغال محلي بدون API
     API_KEY: 'cactus_live_02814c86e511017177e4c4d735cd1d31',
-
-    // نقاط النهاية (Endpoints)
     ENDPOINTS: {
-      // تسجيل مستخدم جديد والحصول على معرف فريد
       REGISTER: '/api/v1/users/register',
-
-      // زيادة عداد الذكر
       INCREMENT: '/api/v1/count/increment',
-
-      // جلب التصنيف العالمي
       RANKING: '/api/v1/ranking',
-
-      // جلب إحصائيات المستخدم
       USER_STATS: '/api/v1/users/stats',
-
-      // مزامنة العدادات المحلية
-      SYNC: '/api/v1/count/sync',
-
-      // جلب إجمالي الأذكار حسب الدولة
-      COUNTRY_STATS: '/api/v1/countries/stats'
+      SYNC: '/api/v1/count/sync'
     },
-
-    // إعدادات الطلب
-    TIMEOUT: 10000, // 10 ثواني
+    TIMEOUT: 10000,
     RETRY_ATTEMPTS: 3,
-    RETRY_DELAY: 1000 // 1 ثانية
+    RETRY_DELAY: 1000
   }
 };
 
-// قائمة الأذكار بالعربية
+// قائمة الأذكار
 const DHIKR_LIST = [
   { id: 'subhanallah', name: 'سبحان الله', arabic: 'سبحان الله', transliteration: 'Glory be to Allah' },
   { id: 'alhamdulillah', name: 'الحمد لله', arabic: 'الحمد لله', transliteration: 'Praise be to Allah' },
@@ -79,7 +55,7 @@ const DHIKR_LIST = [
   { id: 'salli_ala', name: 'اللهم صل على محمد', arabic: 'اللهم صل على محمد', transliteration: "O Allah, send blessings upon Muhammad" }
 ];
 
-// بيانات الدول باللغة العربية
+// بيانات الدول
 const COUNTRIES = [
   { code: 'AF', name: 'أفغانستان', flag: '🇦🇫' },
   { code: 'AL', name: 'ألبانيا', flag: '🇦🇱' },
@@ -272,7 +248,7 @@ const COUNTRIES = [
 ];
 
 // ============================================
-// إدارة الحالة - عداد حقيقي يبدأ من صفر
+// إدارة الحالة - مع حماية كاملة
 // ============================================
 
 const AppState = {
@@ -284,8 +260,7 @@ const AppState = {
   soundEnabled: true,
   isFirstVisit: true,
   userId: null,
-  apiToken: null,
-  pendingSync: [], // عدادات غير مزامنة مع الخادم
+  pendingSync: [],
 
   setState(updates) {
     Object.assign(this, updates);
@@ -303,7 +278,6 @@ const AppState = {
         soundEnabled: this.soundEnabled,
         isFirstVisit: false,
         userId: this.userId,
-        apiToken: this.apiToken,
         pendingSync: this.pendingSync
       };
       localStorage.setItem(CONFIG.STORAGE_KEYS.FIRST_VISIT, JSON.stringify(data));
@@ -314,7 +288,9 @@ const AppState = {
 
   load() {
     try {
-      const data = JSON.parse(localStorage.getItem(CONFIG.STORAGE_KEYS.FIRST_VISIT));
+      const raw = localStorage.getItem(CONFIG.STORAGE_KEYS.FIRST_VISIT);
+      if (!raw) return;
+      const data = JSON.parse(raw);
       if (data) {
         this.totalClicks = data.totalClicks || 0;
         this.currentDhikrIndex = data.currentDhikrIndex || 0;
@@ -324,7 +300,6 @@ const AppState = {
         this.soundEnabled = data.soundEnabled !== undefined ? data.soundEnabled : true;
         this.isFirstVisit = false;
         this.userId = data.userId || null;
-        this.apiToken = data.apiToken || null;
         this.pendingSync = data.pendingSync || [];
       }
     } catch (e) {
@@ -334,13 +309,15 @@ const AppState = {
 };
 
 // ============================================
-// Cactus API Client - عميل API الحقيقي
+// Cactus API Client - مع معالجة أخطاء كاملة
 // ============================================
 
 const CactusAPI = {
-  /**
-   * إنشاء معرف مستخدم فريد إذا لم يكن موجوداً
-   */
+  isAvailable() {
+    return CONFIG.API.BASE_URL && CONFIG.API.BASE_URL.length > 0 && 
+           !CONFIG.API.BASE_URL.includes('example.com');
+  },
+
   getOrCreateUserId() {
     if (!AppState.userId) {
       AppState.userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -349,97 +326,65 @@ const CactusAPI = {
     return AppState.userId;
   },
 
-  /**
-   * بناء Headers للطلبات
-   */
   getHeaders() {
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-User-ID': this.getOrCreateUserId()
     };
-
     if (CONFIG.API.API_KEY) {
       headers['Authorization'] = `Bearer ${CONFIG.API.API_KEY}`;
     }
-
-    if (AppState.apiToken) {
-      headers['X-API-Token'] = AppState.apiToken;
-    }
-
     return headers;
   },
 
-  /**
-   * تنفيذ طلب HTTP مع إعادة المحاولة
-   */
   async request(endpoint, options = {}, retryCount = 0) {
+    if (!this.isAvailable()) {
+      throw new Error('API not configured');
+    }
+
     const url = `${CONFIG.API.BASE_URL}${endpoint}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), CONFIG.API.TIMEOUT);
 
     try {
       const response = await fetch(url, {
         ...options,
-        headers: {
-          ...this.getHeaders(),
-          ...options.headers
-        },
-        signal: controller.signal
+        headers: { ...this.getHeaders(), ...options.headers },
+        signal: AbortSignal.timeout(CONFIG.API.TIMEOUT)
       });
-
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(errorData.message || `HTTP ${response.status}`);
       }
-
       return await response.json();
     } catch (error) {
-      clearTimeout(timeoutId);
-
-      // إعادة المحاولة
       if (retryCount < CONFIG.API.RETRY_ATTEMPTS) {
-        await new Promise(resolve => setTimeout(resolve, CONFIG.API.RETRY_DELAY * (retryCount + 1)));
+        await new Promise(r => setTimeout(r, CONFIG.API.RETRY_DELAY * (retryCount + 1)));
         return this.request(endpoint, options, retryCount + 1);
       }
-
       throw error;
     }
   },
 
-  /**
-   * تسجيل مستخدم جديد في Cactus API
-   */
   async registerUser() {
+    if (!this.isAvailable()) return { success: false };
     try {
-      const data = await this.request(CONFIG.API.ENDPOINTS.REGISTER, {
+      return await this.request(CONFIG.API.ENDPOINTS.REGISTER, {
         method: 'POST',
         body: JSON.stringify({
           userId: this.getOrCreateUserId(),
           countryCode: AppState.selectedCountry,
-          deviceInfo: navigator.userAgent,
           timestamp: Date.now()
         })
       });
-
-      if (data.success && data.token) {
-        AppState.setState({ apiToken: data.token });
-      }
-
-      return data;
     } catch (error) {
       console.warn('فشل تسجيل المستخدم:', error);
-      return { success: false, error: error.message };
+      return { success: false };
     }
   },
 
-  /**
-   * إرسال عداد ذكر إلى الخادم
-   */
   async incrementCount(countryCode, dhikrId) {
-    if (!countryCode) return { success: false };
+    if (!this.isAvailable() || !countryCode) return { success: false };
 
     const payload = {
       userId: this.getOrCreateUserId(),
@@ -449,23 +394,16 @@ const CactusAPI = {
     };
 
     try {
-      const data = await this.request(CONFIG.API.ENDPOINTS.INCREMENT, {
+      return await this.request(CONFIG.API.ENDPOINTS.INCREMENT, {
         method: 'POST',
         body: JSON.stringify(payload)
       });
-
-      return data;
     } catch (error) {
-      // حفظ للمزامنة اللاحقة
       this.addToPendingSync(payload);
-      console.warn('فشل إرسال العداد، تم الحفظ للمزامنة:', error);
-      return { success: false, error: error.message, queued: true };
+      return { success: false, queued: true };
     }
   },
 
-  /**
-   * إضافة عداد إلى قائمة الانتظار
-   */
   addToPendingSync(payload) {
     AppState.pendingSync.push(payload);
     if (AppState.pendingSync.length > 100) {
@@ -474,11 +412,8 @@ const CactusAPI = {
     AppState.persist();
   },
 
-  /**
-   * مزامنة العدادات المعلقة
-   */
   async syncPending() {
-    if (AppState.pendingSync.length === 0) return;
+    if (!this.isAvailable() || AppState.pendingSync.length === 0) return;
 
     const pending = [...AppState.pendingSync];
     const successful = [];
@@ -491,92 +426,54 @@ const CactusAPI = {
         });
         successful.push(payload);
       } catch (error) {
-        console.warn('فشل مزامنة عداد:', error);
         break;
       }
     }
 
-    // إزالة العدادات المزامنة بنجاح
     AppState.pendingSync = AppState.pendingSync.filter(p => !successful.includes(p));
     AppState.persist();
-
-    if (successful.length > 0) {
-      console.log(`تمت مزامنة ${successful.length} عداد بنجاح`);
-    }
   },
 
-  /**
-   * جلب التصنيف العالمي الحقيقي
-   */
   async getRanking() {
-    try {
-      const data = await this.request(CONFIG.API.ENDPOINTS.RANKING, {
-        method: 'GET'
-      });
-
-      return data;
-    } catch (error) {
-      console.warn('فشل جلب التصنيف:', error);
-      throw error;
-    }
+    if (!this.isAvailable()) throw new Error('API not configured');
+    return await this.request(CONFIG.API.ENDPOINTS.RANKING, { method: 'GET' });
   },
 
-  /**
-   * جلب إحصائيات المستخدم
-   */
   async getUserStats() {
-    try {
-      const data = await this.request(CONFIG.API.ENDPOINTS.USER_STATS, {
-        method: 'GET'
-      });
-
-      return data;
-    } catch (error) {
-      console.warn('فشل جلب إحصائيات المستخدم:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * التحقق من حالة الاتصال بالـ API
-   */
-  async checkHealth() {
-    try {
-      const response = await fetch(`${CONFIG.API.BASE_URL}/health`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(5000)
-      });
-      return response.ok;
-    } catch {
-      return false;
-    }
+    if (!this.isAvailable()) throw new Error('API not configured');
+    return await this.request(CONFIG.API.ENDPOINTS.USER_STATS, { method: 'GET' });
   }
 };
 
 // ============================================
-// مراجع عناصر DOM
+// مراجع DOM - مع تحقق من الوجود
 // ============================================
 
+function getElement(id) {
+  const el = document.getElementById(id);
+  if (!el) console.warn(`عنصر غير موجود: #${id}`);
+  return el;
+}
+
 const DOM = {
-  app: document.getElementById('app'),
-  splashScreen: document.getElementById('splash-screen'),
-  countryModal: document.getElementById('country-modal'),
-  countrySearch: document.getElementById('country-search'),
-  countryList: document.getElementById('country-list'),
-  toastContainer: document.getElementById('toast-container'),
-  themeToggle: document.getElementById('theme-toggle'),
-  soundToggle: document.getElementById('sound-toggle'),
-  resetBtn: document.getElementById('reset-btn'),
-  dhikrName: document.getElementById('dhikr-name'),
-  dhikrTransliteration: document.getElementById('dhikr-transliteration'),
-  dhikrProgressBar: document.getElementById('dhikr-progress-bar'),
-  dhikrRemaining: document.getElementById('dhikr-remaining'),
-  currentCount: document.getElementById('current-count'),
-  totalCount: document.getElementById('total-count'),
-  countBtn: document.getElementById('count-btn'),
+  app: getElement('app'),
+  splashScreen: getElement('splash-screen'),
+  countryModal: getElement('country-modal'),
+  countrySearch: getElement('country-search'),
+  countryList: getElement('country-list'),
+  toastContainer: getElement('toast-container'),
+  themeToggle: getElement('theme-toggle'),
+  soundToggle: getElement('sound-toggle'),
+  resetBtn: getElement('reset-btn'),
+  dhikrName: getElement('dhikr-name'),
+  dhikrTransliteration: getElement('dhikr-transliteration'),
+  dhikrProgressBar: getElement('dhikr-progress-bar'),
+  dhikrRemaining: getElement('dhikr-remaining'),
+  currentCount: getElement('current-count'),
+  totalCount: getElement('total-count'),
+  countBtn: getElement('count-btn'),
   countBtnRipple: document.querySelector('.count-btn-ripple'),
-  rankingList: document.getElementById('ranking-list')
+  rankingList: getElement('ranking-list')
 };
 
 // ============================================
@@ -587,58 +484,57 @@ const AudioEngine = {
   ctx: null,
 
   init() {
-    if (!this.ctx) {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+    try {
+      if (!this.ctx) {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    } catch (e) {
+      console.warn('Web Audio API not available');
     }
   },
 
   playClick() {
-    if (!AppState.soundEnabled) return;
-    this.init();
-
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.1);
-
-    gain.gain.setValueAtTime(CONFIG.SOUND_VOLUME, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
-
-    osc.start(this.ctx.currentTime);
-    osc.stop(this.ctx.currentTime + 0.15);
+    if (!AppState.soundEnabled || !this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(CONFIG.SOUND_VOLUME, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+      osc.start(this.ctx.currentTime);
+      osc.stop(this.ctx.currentTime + 0.15);
+    } catch (e) {
+      // صوت مش شغال، استمر
+    }
   },
 
   playCompletion() {
-    if (!AppState.soundEnabled) return;
-    this.init();
-
-    const frequencies = [523.25, 659.25, 783.99];
-
-    frequencies.forEach((freq, i) => {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.05);
-
-      gain.gain.setValueAtTime(0, this.ctx.currentTime + i * 0.05);
-      gain.gain.linearRampToValueAtTime(CONFIG.SOUND_VOLUME * 0.5, this.ctx.currentTime + i * 0.05 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.05 + 0.3);
-
-      osc.start(this.ctx.currentTime + i * 0.05);
-      osc.stop(this.ctx.currentTime + i * 0.05 + 0.3);
-    });
+    if (!AppState.soundEnabled || !this.ctx) return;
+    try {
+      const frequencies = [523.25, 659.25, 783.99];
+      frequencies.forEach((freq, i) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.05);
+        gain.gain.setValueAtTime(0, this.ctx.currentTime + i * 0.05);
+        gain.gain.linearRampToValueAtTime(CONFIG.SOUND_VOLUME * 0.5, this.ctx.currentTime + i * 0.05 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.05 + 0.3);
+        osc.start(this.ctx.currentTime + i * 0.05);
+        osc.stop(this.ctx.currentTime + i * 0.05 + 0.3);
+      });
+    } catch (e) {
+      // استمر بدون صوت
+    }
   }
 };
 
@@ -648,8 +544,12 @@ const AudioEngine = {
 
 const VibrationEngine = {
   trigger() {
-    if (navigator.vibrate) {
-      navigator.vibrate(CONFIG.VIBRATION_DURATION);
+    try {
+      if (navigator.vibrate) {
+        navigator.vibrate(CONFIG.VIBRATION_DURATION);
+      }
+    } catch (e) {
+      // استمر بدون اهتزاز
     }
   }
 };
@@ -684,20 +584,22 @@ const ToastSystem = {
     toast.setAttribute('role', 'status');
     toast.setAttribute('aria-live', 'polite');
 
-    DOM.toastContainer.appendChild(toast);
-    toast.offsetHeight;
+    if (DOM.toastContainer) {
+      DOM.toastContainer.appendChild(toast);
+      toast.offsetHeight;
 
-    requestAnimationFrame(() => {
-      toast.classList.add('show');
-    });
+      requestAnimationFrame(() => {
+        toast.classList.add('show');
+      });
 
-    await this.wait(duration);
+      await this.wait(duration);
 
-    toast.classList.remove('show');
-    toast.classList.add('hide');
+      toast.classList.remove('show');
+      toast.classList.add('hide');
 
-    await this.wait(300);
-    toast.remove();
+      await this.wait(300);
+      if (toast.parentNode) toast.remove();
+    }
 
     this.processQueue();
   },
@@ -721,23 +623,22 @@ const CountrySelector = {
   },
 
   attachEvents() {
+    if (!DOM.countrySearch) return;
+
     DOM.countrySearch.addEventListener('input', (e) => {
       this.handleSearch(e.target.value);
     });
 
     DOM.countrySearch.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        const firstItem = DOM.countryList.querySelector('.country-item');
-        if (firstItem) {
-          firstItem.click();
-        }
+        const firstItem = DOM.countryList ? DOM.countryList.querySelector('.country-item') : null;
+        if (firstItem) firstItem.click();
       }
     });
   },
 
   handleSearch(query) {
     const normalizedQuery = query.toLowerCase().trim();
-
     if (!normalizedQuery) {
       this.filteredCountries = [...COUNTRIES];
     } else {
@@ -746,11 +647,11 @@ const CountrySelector = {
         country.code.toLowerCase().includes(normalizedQuery)
       );
     }
-
     this.renderList();
   },
 
   renderList() {
+    if (!DOM.countryList) return;
     DOM.countryList.innerHTML = '';
 
     if (this.filteredCountries.length === 0) {
@@ -762,7 +663,6 @@ const CountrySelector = {
     }
 
     const fragment = document.createDocumentFragment();
-
     this.filteredCountries.forEach(country => {
       const item = document.createElement('button');
       item.className = 'country-item';
@@ -772,14 +672,9 @@ const CountrySelector = {
         <span class="country-item-flag" aria-hidden="true">${country.flag}</span>
         <span class="country-item-name">${this.escapeHtml(country.name)}</span>
       `;
-
-      item.addEventListener('click', () => {
-        this.selectCountry(country);
-      });
-
+      item.addEventListener('click', () => this.selectCountry(country));
       fragment.appendChild(item);
     });
-
     DOM.countryList.appendChild(fragment);
   },
 
@@ -787,8 +682,7 @@ const CountrySelector = {
     AppState.setState({ selectedCountry: country.code });
     this.closeModal();
 
-    // تسجيل المستخدم في الـ API عند اختيار الدولة
-    if (CONFIG.API.BASE_URL && CONFIG.API.BASE_URL !== 'https://cactus-api.example.com') {
+    if (CactusAPI.isAvailable()) {
       try {
         await CactusAPI.registerUser();
         ToastSystem.show(`تم الاختيار: ${country.flag} ${country.name} ✅`, 'default', 1500);
@@ -799,25 +693,24 @@ const CountrySelector = {
       ToastSystem.show(`تم الاختيار: ${country.flag} ${country.name}`, 'default', 1500);
     }
 
-    // تحديث التصنيف بعد اختيار الدولة
     RankingSystem.render();
     RankingSystem.syncWithBackend();
   },
 
   openModal() {
+    if (!DOM.countryModal) return;
     DOM.countryModal.classList.add('active');
     DOM.countryModal.setAttribute('aria-hidden', 'false');
-
     setTimeout(() => {
-      DOM.countrySearch.focus();
+      if (DOM.countrySearch) DOM.countrySearch.focus();
     }, 300);
-
-    DOM.countrySearch.value = '';
+    if (DOM.countrySearch) DOM.countrySearch.value = '';
     this.filteredCountries = [...COUNTRIES];
     this.renderList();
   },
 
   closeModal() {
+    if (!DOM.countryModal) return;
     DOM.countryModal.classList.remove('active');
     DOM.countryModal.setAttribute('aria-hidden', 'true');
   },
@@ -830,7 +723,7 @@ const CountrySelector = {
 };
 
 // ============================================
-// نظام التصنيف الحقيقي - مع Cactus API
+// نظام التصنيف - يعمل محلي ومع API
 // ============================================
 
 const RankingSystem = {
@@ -842,16 +735,10 @@ const RankingSystem = {
   init() {
     this.loadFromStorage();
     this.render();
-    // محاولة المزامنة مع Cactus API عند التحميل
     this.syncWithBackend();
-
-    // مزامنة دورية كل 30 ثانية
     setInterval(() => this.syncWithBackend(), 30000);
   },
 
-  /**
-   * تحميل البيانات من التخزين المحلي (احتياطي فقط)
-   */
   loadFromStorage() {
     try {
       const stored = localStorage.getItem('tasbeeh_ranking_cache');
@@ -867,9 +754,6 @@ const RankingSystem = {
     }
   },
 
-  /**
-   * حفظ البيانات مؤقتاً في التخزين المحلي
-   */
   saveToStorage() {
     try {
       localStorage.setItem('tasbeeh_ranking_cache', JSON.stringify({
@@ -881,25 +765,18 @@ const RankingSystem = {
     }
   },
 
-  /**
-   * المزامنة مع Cactus API - جلب التصنيف الحقيقي
-   */
   async syncWithBackend() {
-    // التحقق من إعدادات API
-    if (!CONFIG.API.BASE_URL || CONFIG.API.BASE_URL === 'https://cactus-api.example.com') {
+    if (!CactusAPI.isAvailable()) {
       this.apiConnected = false;
       this.render();
       return;
     }
 
     this.isLoading = true;
-    this.render(); // إظهار حالة التحميل
+    this.render();
 
     try {
-      // مزامنة العدادات المعلقة أولاً
       await CactusAPI.syncPending();
-
-      // جلب التصنيف العالمي
       const result = await CactusAPI.getRanking();
 
       if (result.success && Array.isArray(result.data)) {
@@ -913,70 +790,51 @@ const RankingSystem = {
             totalClicks: item.totalClicks
           };
         });
-
         this.apiConnected = true;
         this.lastSyncTime = Date.now();
         this.saveToStorage();
-
-        console.log('✅ تم تحديث التصنيف من Cactus API');
       }
     } catch (error) {
-      console.warn('⚠️ تعذر الاتصال بـ Cactus API:', error);
+      console.warn('تعذر الاتصال بـ API:', error);
       this.apiConnected = false;
-      // نستمر بالبيانات المخزنة محلياً
     } finally {
       this.isLoading = false;
       this.render();
     }
   },
 
-  /**
-   * إرسال عداد حقيقي إلى Cactus API
-   */
   async incrementCountryClicks(countryCode) {
     if (!countryCode) return;
-
-    // تحديث محلي فوري (للعرض السريع)
     this.updateLocalRanking(countryCode);
 
-    // إرسال إلى Cactus API
-    if (CONFIG.API.BASE_URL && CONFIG.API.BASE_URL !== 'https://cactus-api.example.com') {
+    if (CactusAPI.isAvailable()) {
       try {
         const result = await CactusAPI.incrementCount(
           countryCode, 
           DHIKR_LIST[AppState.currentDhikrIndex].id
         );
-
-        if (result.success) {
-          // تحديث التصنيف بالقيمة الحقيقية من الخادم
-          if (result.ranking) {
-            this.rankingData = result.ranking.map(item => {
-              const country = COUNTRIES.find(c => c.code === item.countryCode);
-              return {
-                rank: item.rank,
-                countryCode: item.countryCode,
-                countryName: country ? country.name : item.countryCode,
-                flag: country ? country.flag : '🏳️',
-                totalClicks: item.totalClicks
-              };
-            });
-            this.saveToStorage();
-            this.render();
-          }
+        if (result.success && result.ranking) {
+          this.rankingData = result.ranking.map(item => {
+            const country = COUNTRIES.find(c => c.code === item.countryCode);
+            return {
+              rank: item.rank,
+              countryCode: item.countryCode,
+              countryName: country ? country.name : item.countryCode,
+              flag: country ? country.flag : '🏳️',
+              totalClicks: item.totalClicks
+            };
+          });
+          this.saveToStorage();
+          this.render();
         }
       } catch (error) {
-        console.warn('فشل إرسال العداد إلى Cactus API:', error);
-        // العداد يُحفظ تلقائياً في قائمة الانتظار
+        console.warn('فشل إرسال العداد:', error);
       }
     }
   },
 
-  /**
-   * تحديث التصنيف محلياً - للعرض الفوري
-   */
   updateLocalRanking(countryCode) {
     const entry = this.rankingData.find(r => r.countryCode === countryCode);
-
     if (entry) {
       entry.totalClicks += 1;
     } else {
@@ -991,12 +849,8 @@ const RankingSystem = {
         });
       }
     }
-
     this.rankingData.sort((a, b) => b.totalClicks - a.totalClicks);
-    this.rankingData.forEach((item, index) => {
-      item.rank = index + 1;
-    });
-
+    this.rankingData.forEach((item, index) => { item.rank = index + 1; });
     this.saveToStorage();
     this.render();
   },
@@ -1006,62 +860,47 @@ const RankingSystem = {
   },
 
   render() {
+    if (!DOM.rankingList) return;
     DOM.rankingList.innerHTML = '';
 
-    // إظهار حالة الاتصال
     if (this.isLoading) {
-      const loadingState = document.createElement('div');
-      loadingState.className = 'ranking-empty-state';
-      loadingState.style.cssText = 'text-align: center; padding: 2rem; color: var(--color-text-muted);';
-      loadingState.innerHTML = `
-        <div style="font-size: 2rem; margin-bottom: 0.5rem;">⏳</div>
-        <div style="font-weight: 600; margin-bottom: 0.25rem;">جاري تحميل التصنيف...</div>
-        <div style="font-size: 0.875rem;">جاري الاتصال بـ Cactus API</div>
-      `;
-      DOM.rankingList.appendChild(loadingState);
+      DOM.rankingList.innerHTML = `
+        <div style="text-align:center;padding:2rem;color:var(--color-text-muted)">
+          <div style="font-size:2rem;margin-bottom:0.5rem">⏳</div>
+          <div style="font-weight:600">جاري تحميل التصنيف...</div>
+        </div>`;
       return;
     }
 
-    // إظهار حالة عدم الاتصال
-    const isApiConfigured = CONFIG.API.BASE_URL && CONFIG.API.BASE_URL !== 'https://cactus-api.example.com';
+    const isApiConfigured = CactusAPI.isAvailable();
 
-    if (!isApiConfigured) {
-      const configState = document.createElement('div');
-      configState.className = 'ranking-empty-state';
-      configState.style.cssText = 'text-align: center; padding: 2rem; color: var(--color-text-muted);';
-      configState.innerHTML = `
-        <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚙️</div>
-        <div style="font-weight: 600; margin-bottom: 0.25rem;">Cactus API غير مُعد</div>
-        <div style="font-size: 0.875rem;">قم بتعديل CONFIG.API.BASE_URL في ملف script.js</div>
-      `;
-      DOM.rankingList.appendChild(configState);
+    if (!isApiConfigured && this.rankingData.length === 0) {
+      DOM.rankingList.innerHTML = `
+        <div style="text-align:center;padding:2rem;color:var(--color-text-muted)">
+          <div style="font-size:2rem;margin-bottom:0.5rem">📊</div>
+          <div style="font-weight:600;margin-bottom:0.25rem">التصنيف المحلي</div>
+          <div style="font-size:0.875rem">ابدأ العد ليظهر تصنيف بلدك</div>
+        </div>`;
       return;
     }
 
     if (!this.apiConnected && this.rankingData.length === 0) {
-      const errorState = document.createElement('div');
-      errorState.className = 'ranking-empty-state';
-      errorState.style.cssText = 'text-align: center; padding: 2rem; color: var(--color-text-muted);';
-      errorState.innerHTML = `
-        <div style="font-size: 2rem; margin-bottom: 0.5rem;">📡</div>
-        <div style="font-weight: 600; margin-bottom: 0.25rem;">تعذر الاتصال بالخادم</div>
-        <div style="font-size: 0.875rem;">التصنيف سيظهر عند استعادة الاتصال</div>
-      `;
-      DOM.rankingList.appendChild(errorState);
+      DOM.rankingList.innerHTML = `
+        <div style="text-align:center;padding:2rem;color:var(--color-text-muted)">
+          <div style="font-size:2rem;margin-bottom:0.5rem">📡</div>
+          <div style="font-weight:600;margin-bottom:0.25rem">تعذر الاتصال بالخادم</div>
+          <div style="font-size:0.875rem">التصنيف سيظهر عند استعادة الاتصال</div>
+        </div>`;
       return;
     }
 
-    // إذا كان التصنيف فارغاً
     if (this.rankingData.length === 0) {
-      const emptyState = document.createElement('div');
-      emptyState.className = 'ranking-empty-state';
-      emptyState.style.cssText = 'text-align: center; padding: 2rem; color: var(--color-text-muted);';
-      emptyState.innerHTML = `
-        <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
-        <div style="font-weight: 600; margin-bottom: 0.25rem;">التصنيف العالمي</div>
-        <div style="font-size: 0.875rem;">ابدأ العد ليظهر تصنيف بلدك هنا</div>
-      `;
-      DOM.rankingList.appendChild(emptyState);
+      DOM.rankingList.innerHTML = `
+        <div style="text-align:center;padding:2rem;color:var(--color-text-muted)">
+          <div style="font-size:2rem;margin-bottom:0.5rem">📊</div>
+          <div style="font-weight:600">التصنيف العالمي</div>
+          <div style="font-size:0.875rem">ابدأ العد ليظهر تصنيف بلدك هنا</div>
+        </div>`;
       return;
     }
 
@@ -1070,7 +909,6 @@ const RankingSystem = {
 
     displayData.forEach(item => {
       const isUserCountry = item.countryCode === AppState.selectedCountry;
-
       const row = document.createElement('div');
       row.className = `ranking-item ${isUserCountry ? 'highlight' : ''}`;
       row.setAttribute('role', 'listitem');
@@ -1085,7 +923,6 @@ const RankingSystem = {
         <span class="ranking-country">${this.escapeHtml(item.countryName)}</span>
         <span class="ranking-clicks">${this.formatNumber(item.totalClicks)}</span>
       `;
-
       fragment.appendChild(row);
     });
 
@@ -1122,21 +959,19 @@ const DhikrManager = {
       currentDhikrIndex: nextIndex,
       currentDhikrCount: 0
     });
-
     this.animateTransition();
   },
 
   animateTransition() {
     const nameEl = DOM.dhikrName;
     const transEl = DOM.dhikrTransliteration;
-
-    nameEl.classList.add('changing');
-    transEl.classList.add('changing');
+    if (nameEl) nameEl.classList.add('changing');
+    if (transEl) transEl.classList.add('changing');
 
     setTimeout(() => {
       this.updateDisplay();
-      nameEl.classList.remove('changing');
-      transEl.classList.remove('changing');
+      if (nameEl) nameEl.classList.remove('changing');
+      if (transEl) transEl.classList.remove('changing');
       AudioEngine.playCompletion();
     }, 300);
   },
@@ -1146,20 +981,20 @@ const DhikrManager = {
     const remaining = this.getRemaining();
     const progress = this.getProgress();
 
-    DOM.dhikrName.textContent = dhikr.name;
-    DOM.dhikrTransliteration.textContent = dhikr.transliteration;
-    DOM.dhikrRemaining.textContent = `متبقي ${remaining}`;
-
-    DOM.dhikrProgressBar.style.width = `${progress}%`;
-    DOM.dhikrProgressBar.setAttribute('aria-valuenow', AppState.currentDhikrCount);
-
-    DOM.currentCount.textContent = AppState.currentDhikrCount;
-    DOM.totalCount.textContent = AppState.totalClicks.toLocaleString('ar-SA');
+    if (DOM.dhikrName) DOM.dhikrName.textContent = dhikr.name;
+    if (DOM.dhikrTransliteration) DOM.dhikrTransliteration.textContent = dhikr.transliteration;
+    if (DOM.dhikrRemaining) DOM.dhikrRemaining.textContent = `متبقي ${remaining}`;
+    if (DOM.dhikrProgressBar) {
+      DOM.dhikrProgressBar.style.width = `${progress}%`;
+      DOM.dhikrProgressBar.setAttribute('aria-valuenow', AppState.currentDhikrCount);
+    }
+    if (DOM.currentCount) DOM.currentCount.textContent = AppState.currentDhikrCount;
+    if (DOM.totalCount) DOM.totalCount.textContent = AppState.totalClicks.toLocaleString('ar-SA');
   }
 };
 
 // ============================================
-// محرك العداد الحقيقي
+// محرك العداد
 // ============================================
 
 const CounterEngine = {
@@ -1183,22 +1018,27 @@ const CounterEngine = {
       this.showEncouragement();
     }
 
-    // إرسال العداد الحقيقي إلى Cactus API
     RankingSystem.incrementCountryClicks(AppState.selectedCountry);
   },
 
   triggerEffects() {
-    DOM.currentCount.classList.remove('pulse');
-    void DOM.currentCount.offsetWidth;
-    DOM.currentCount.classList.add('pulse');
+    if (DOM.currentCount) {
+      DOM.currentCount.classList.remove('pulse');
+      void DOM.currentCount.offsetWidth;
+      DOM.currentCount.classList.add('pulse');
+    }
 
-    DOM.countBtnRipple.classList.remove('active');
-    void DOM.countBtnRipple.offsetWidth;
-    DOM.countBtnRipple.classList.add('active');
+    if (DOM.countBtnRipple) {
+      DOM.countBtnRipple.classList.remove('active');
+      void DOM.countBtnRipple.offsetWidth;
+      DOM.countBtnRipple.classList.add('active');
+    }
 
-    DOM.countBtn.classList.remove('pulse-ring');
-    void DOM.countBtn.offsetWidth;
-    DOM.countBtn.classList.add('pulse-ring');
+    if (DOM.countBtn) {
+      DOM.countBtn.classList.remove('pulse-ring');
+      void DOM.countBtn.offsetWidth;
+      DOM.countBtn.classList.add('pulse-ring');
+    }
 
     AudioEngine.playClick();
     VibrationEngine.trigger();
@@ -1206,7 +1046,6 @@ const CounterEngine = {
 
   handleDhikrComplete() {
     DhikrManager.nextDhikr();
-
     ToastSystem.show(
       `تم الإكمال! التالي: ${DhikrManager.getCurrentDhikr().name}`,
       'gold',
@@ -1216,13 +1055,12 @@ const CounterEngine = {
 
   showEncouragement() {
     const messages = [
-      'ممتاز! جزاك الله خيراً.',
+      'ممتاز! جزاك الله خيراُ.',
       'ما شاء الله! استمر.',
       'بارك الله فيك! رائع.',
-      'جزاك الله خيراً على ذكرك.',
+      'جزاك الله خيراُ على ذكرك.',
       'جميل! استمر على الاستمرارية.'
     ];
-
     const message = messages[Math.floor(Math.random() * messages.length)];
     ToastSystem.show(message, 'gold');
   },
@@ -1242,14 +1080,11 @@ const ThemeManager = {
   init() {
     const savedTheme = AppState.theme;
     const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
     const theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
     this.setTheme(theme);
 
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-      if (!AppState.theme) {
-        this.setTheme(e.matches ? 'dark' : 'light');
-      }
+      if (!AppState.theme) this.setTheme(e.matches ? 'dark' : 'light');
     });
   },
 
@@ -1277,7 +1112,6 @@ const SoundManager = {
     const newState = !AppState.soundEnabled;
     AppState.setState({ soundEnabled: newState });
     document.body.setAttribute('data-sound', newState ? 'on' : 'off');
-
     ToastSystem.show(
       newState ? 'تم تفعيل المؤثرات الصوتية' : 'تم كتم المؤثرات الصوتية',
       'default',
@@ -1300,6 +1134,7 @@ const EventHandlers = {
 
   initCountButton() {
     const btn = DOM.countBtn;
+    if (!btn) return;
 
     btn.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -1330,13 +1165,14 @@ const EventHandlers = {
       if (e.code === 'Space' || e.code === 'Enter') {
         e.preventDefault();
         if (document.activeElement !== DOM.countrySearch) {
-          DOM.countBtn.click();
-          DOM.countBtn.setAttribute('aria-pressed', 'true');
+          if (DOM.countBtn) {
+            DOM.countBtn.click();
+            DOM.countBtn.setAttribute('aria-pressed', 'true');
+          }
         }
       }
-
       if (e.code === 'Escape') {
-        if (DOM.countryModal.classList.contains('active')) {
+        if (DOM.countryModal && DOM.countryModal.classList.contains('active')) {
           CountrySelector.closeModal();
         }
       }
@@ -1344,60 +1180,64 @@ const EventHandlers = {
 
     document.addEventListener('keyup', (e) => {
       if (e.code === 'Space' || e.code === 'Enter') {
-        DOM.countBtn.setAttribute('aria-pressed', 'false');
+        if (DOM.countBtn) DOM.countBtn.setAttribute('aria-pressed', 'false');
       }
     });
   },
 
   initControls() {
-    DOM.themeToggle.addEventListener('click', () => {
-      ThemeManager.toggle();
-    });
-
-    DOM.soundToggle.addEventListener('click', () => {
-      SoundManager.toggle();
-    });
-
-    DOM.resetBtn.addEventListener('click', () => {
-      CounterEngine.reset();
-    });
+    if (DOM.themeToggle) {
+      DOM.themeToggle.addEventListener('click', () => ThemeManager.toggle());
+    }
+    if (DOM.soundToggle) {
+      DOM.soundToggle.addEventListener('click', () => SoundManager.toggle());
+    }
+    if (DOM.resetBtn) {
+      DOM.resetBtn.addEventListener('click', () => CounterEngine.reset());
+    }
   },
 
   initTouch() {
     document.addEventListener('touchmove', (e) => {
-      if (e.target.closest('.country-list')) {
-        return;
-      }
+      if (e.target.closest('.country-list')) return;
     }, { passive: true });
   }
 };
 
 // ============================================
-// تهيئة التطبيق
+// تهيئة التطبيق - مع حماية كاملة من الأخطاء
 // ============================================
 
 const App = {
   async init() {
-    AppState.load();
+    try {
+      AppState.load();
+      ThemeManager.init();
+      SoundManager.init();
+      CountrySelector.init();
+      RankingSystem.init();
+      DhikrManager.updateDisplay();
+      EventHandlers.init();
 
-    ThemeManager.init();
-    SoundManager.init();
-    CountrySelector.init();
-    RankingSystem.init();
-    DhikrManager.updateDisplay();
-    EventHandlers.init();
+      await this.showSplash();
 
-    await this.showSplash();
+      if (!AppState.selectedCountry) {
+        CountrySelector.openModal();
+      }
 
-    if (!AppState.selectedCountry) {
-      CountrySelector.openModal();
-    }
+      this.revealApp();
 
-    this.revealApp();
-
-    // محاولة مزامنة العدادات المعلقة عند التحميل
-    if (CONFIG.API.BASE_URL && CONFIG.API.BASE_URL !== 'https://cactus-api.example.com') {
-      CactusAPI.syncPending().catch(() => {});
+      if (CactusAPI.isAvailable()) {
+        CactusAPI.syncPending().catch(() => {});
+      }
+    } catch (error) {
+      console.error('خطأ في تهيئة التطبيق:', error);
+      // حتى لو فيه خطأ، أخفي شاشة التحميل
+      if (DOM.splashScreen) DOM.splashScreen.classList.add('hidden');
+      if (DOM.app) {
+        DOM.app.setAttribute('aria-hidden', 'false');
+        DOM.app.classList.add('visible');
+      }
     }
   },
 
@@ -1410,7 +1250,7 @@ const App = {
         const remaining = Math.max(0, CONFIG.SPLASH_MIN_TIME - elapsed);
 
         setTimeout(() => {
-          DOM.splashScreen.classList.add('hidden');
+          if (DOM.splashScreen) DOM.splashScreen.classList.add('hidden');
           resolve();
         }, remaining);
       };
@@ -1424,10 +1264,12 @@ const App = {
   },
 
   revealApp() {
-    DOM.app.setAttribute('aria-hidden', 'false');
-    requestAnimationFrame(() => {
-      DOM.app.classList.add('visible');
-    });
+    if (DOM.app) {
+      DOM.app.setAttribute('aria-hidden', 'false');
+      requestAnimationFrame(() => {
+        DOM.app.classList.add('visible');
+      });
+    }
   }
 };
 
