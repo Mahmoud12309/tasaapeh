@@ -38,7 +38,7 @@ const CONFIG = {
     BASE_URL: 'https://cactus-api.example.com',
 
     // مفتاح API الخاص بك (اختياري - إذا كان يتطلب مصادقة)
-    API_KEY: '',
+    API_KEY: 'cactus_live_02814c86e511017177e4c4d735cd1d31',
 
     // نقاط النهاية (Endpoints)
     ENDPOINTS: {
