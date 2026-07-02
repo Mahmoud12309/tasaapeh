@@ -35,7 +35,9 @@ const CONFIG = {
   API: {
     // عنوان خادم Cactus API الخاص بك
     // مثال: 'https://your-cactus-api.com' أو 'https://api.tasbeeh.app'
-    BASE_URL: 'https://cactus-api.example.com',
+    BASE_URL: 'https://firestore.googleapis.com/v1/projects/tasapeh-56e44/databases/(default)/documents
+
+',
 
     // مفتاح API الخاص بك (اختياري - إذا كان يتطلب مصادقة)
     API_KEY: 'cactus_live_02814c86e511017177e4c4d735cd1d31',
