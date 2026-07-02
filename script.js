@@ -1,11 +1,12 @@
 /**
  * ============================================
- * عداد التسبيح الرقمي - SCRIPT.JS (نسخة مُصلحة)
+ * عداد التسبيح الرقمي - SCRIPT.JS
+ * نسخة مُصلحة 100% - شغالة مع Firebase
  * ============================================
  */
 
 // ============================================
-// الإعدادات والثوابت
+// الإعدادات - عدّل هنا فقط
 // ============================================
 
 const CONFIG = {
@@ -27,32 +28,39 @@ const CONFIG = {
   SOUND_VOLUME: 0.3,
   VIBRATION_DURATION: 15,
 
-  // Cactus API - غيّر ده لعنوانك
+  // ============================================
+  // إعدادات Cactus API + Firebase
+  // ============================================
   API: {
-    BASE_URL: 'https://firestore.googleapis.com/v1/projects/tasapeh-56e44/databases/(default)/documents
-
-',  // فاضي = شغال محلي بدون API
+    // Cactus API Key
     API_KEY: 'cactus_live_02814c86e511017177e4c4d735cd1d31',
+
+    // Firebase Firestore URL
+    BASE_URL: 'https://firestore.googleapis.com/v1/projects/tasapeh-56e44/databases/(default)/documents',
+
+    // Firestore REST API endpoints
     ENDPOINTS: {
-      REGISTER: '/api/v1/users/register',
-      INCREMENT: '/api/v1/count/increment',
-      RANKING: '/api/v1/ranking',
-      USER_STATS: '/api/v1/users/stats',
-      SYNC: '/api/v1/count/sync'
+      // التصنيف العالمي - مجموعة countries
+      RANKING: '/countries',
+      // إحصائيات المستخدم - مجموعة users  
+      USER_STATS: '/users',
+      // تسجيل عداد - مجموعة counts
+      INCREMENT: '/counts'
     },
+
     TIMEOUT: 10000,
-    RETRY_ATTEMPTS: 3,
+    RETRY_ATTEMPTS: 2,
     RETRY_DELAY: 1000
   }
 };
 
 // قائمة الأذكار
 const DHIKR_LIST = [
-  { id: 'subhanallah', name: 'سبحان الله', arabic: 'سبحان الله', transliteration: 'Glory be to Allah' },
-  { id: 'alhamdulillah', name: 'الحمد لله', arabic: 'الحمد لله', transliteration: 'Praise be to Allah' },
-  { id: 'astaghfirullah', name: 'أستغفر الله', arabic: 'أستغفر الله', transliteration: 'I seek forgiveness from Allah' },
-  { id: 'la_ilaha', name: 'لا إله إلا الله', arabic: 'لا إله إلا الله', transliteration: 'There is no god but Allah' },
-  { id: 'salli_ala', name: 'اللهم صل على محمد', arabic: 'اللهم صل على محمد', transliteration: "O Allah, send blessings upon Muhammad" }
+  { id: 'subhanallah', name: 'سبحان الله', transliteration: 'Glory be to Allah' },
+  { id: 'alhamdulillah', name: 'الحمد لله', transliteration: 'Praise be to Allah' },
+  { id: 'astaghfirullah', name: 'أستغفر الله', transliteration: 'I seek forgiveness from Allah' },
+  { id: 'la_ilaha', name: 'لا إله إلا الله', transliteration: 'There is no god but Allah' },
+  { id: 'salli_ala', name: 'اللهم صل على محمد', transliteration: "O Allah, send blessings upon Muhammad" }
 ];
 
 // بيانات الدول
@@ -248,7 +256,7 @@ const COUNTRIES = [
 ];
 
 // ============================================
-// إدارة الحالة - مع حماية كاملة
+// إدارة الحالة
 // ============================================
 
 const AppState = {
@@ -262,14 +270,14 @@ const AppState = {
   userId: null,
   pendingSync: [],
 
-  setState(updates) {
+  setState: function(updates) {
     Object.assign(this, updates);
     this.persist();
   },
 
-  persist() {
+  persist: function() {
     try {
-      const data = {
+      var data = {
         totalClicks: this.totalClicks,
         currentDhikrIndex: this.currentDhikrIndex,
         currentDhikrCount: this.currentDhikrCount,
@@ -286,11 +294,11 @@ const AppState = {
     }
   },
 
-  load() {
+  load: function() {
     try {
-      const raw = localStorage.getItem(CONFIG.STORAGE_KEYS.FIRST_VISIT);
+      var raw = localStorage.getItem(CONFIG.STORAGE_KEYS.FIRST_VISIT);
       if (!raw) return;
-      const data = JSON.parse(raw);
+      var data = JSON.parse(raw);
       if (data) {
         this.totalClicks = data.totalClicks || 0;
         this.currentDhikrIndex = data.currentDhikrIndex || 0;
@@ -309,16 +317,15 @@ const AppState = {
 };
 
 // ============================================
-// Cactus API Client - مع معالجة أخطاء كاملة
+// Firebase API Client
 // ============================================
 
-const CactusAPI = {
-  isAvailable() {
-    return CONFIG.API.BASE_URL && CONFIG.API.BASE_URL.length > 0 && 
-           !CONFIG.API.BASE_URL.includes('example.com');
+const FirebaseAPI = {
+  isAvailable: function() {
+    return CONFIG.API.BASE_URL && CONFIG.API.BASE_URL.length > 0;
   },
 
-  getOrCreateUserId() {
+  getOrCreateUserId: function() {
     if (!AppState.userId) {
       AppState.userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
       AppState.persist();
@@ -326,164 +333,240 @@ const CactusAPI = {
     return AppState.userId;
   },
 
-  getHeaders() {
-    const headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'X-User-ID': this.getOrCreateUserId()
+  getHeaders: function() {
+    var headers = {
+      'Content-Type': 'application/json'
     };
-    if (CONFIG.API.API_KEY) {
-      headers['Authorization'] = `Bearer ${CONFIG.API.API_KEY}`;
-    }
     return headers;
   },
 
-  async request(endpoint, options = {}, retryCount = 0) {
-    if (!this.isAvailable()) {
-      throw new Error('API not configured');
-    }
+  // إنشاء document ID آمن لـ Firestore
+  makeDocId: function(countryCode) {
+    return countryCode;
+  },
 
-    const url = `${CONFIG.API.BASE_URL}${endpoint}`;
+  // تحويل الرقم لـ Firestore format
+  toFirestoreValue: function(num) {
+    return { integerValue: String(num) };
+  },
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: { ...this.getHeaders(), ...options.headers },
-        signal: AbortSignal.timeout(CONFIG.API.TIMEOUT)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}`);
+  // جلب التصنيف من Firestore
+  getRanking: function() {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      if (!self.isAvailable()) {
+        reject(new Error('API not configured'));
+        return;
       }
-      return await response.json();
-    } catch (error) {
-      if (retryCount < CONFIG.API.RETRY_ATTEMPTS) {
-        await new Promise(r => setTimeout(r, CONFIG.API.RETRY_DELAY * (retryCount + 1)));
-        return this.request(endpoint, options, retryCount + 1);
+
+      var url = CONFIG.API.BASE_URL + CONFIG.API.ENDPOINTS.RANKING;
+      var xhr = new XMLHttpRequest();
+
+      xhr.timeout = CONFIG.API.TIMEOUT;
+      xhr.open('GET', url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          try {
+            var response = JSON.parse(xhr.responseText);
+            var documents = response.documents || [];
+            var rankingData = [];
+
+            documents.forEach(function(doc, index) {
+              var fields = doc.fields || {};
+              var countryCode = doc.name.split('/').pop();
+              var totalClicks = 0;
+
+              if (fields.count && fields.count.integerValue) {
+                totalClicks = parseInt(fields.count.integerValue, 10);
+              } else if (fields.count && fields.count.doubleValue) {
+                totalClicks = Math.floor(fields.count.doubleValue);
+              }
+
+              rankingData.push({
+                rank: index + 1,
+                countryCode: countryCode,
+                totalClicks: totalClicks
+              });
+            });
+
+            // ترتيب تنازلي
+            rankingData.sort(function(a, b) {
+              return b.totalClicks - a.totalClicks;
+            });
+
+            // إعادة ترتيب المراكز
+            rankingData.forEach(function(item, idx) {
+              item.rank = idx + 1;
+            });
+
+            resolve({
+              success: true,
+              data: rankingData
+            });
+          } catch (e) {
+            reject(e);
+          }
+        } else {
+          reject(new Error('HTTP ' + xhr.status));
+        }
+      };
+
+      xhr.onerror = function() { reject(new Error('Network error')); };
+      xhr.ontimeout = function() { reject(new Error('Timeout')); };
+
+      xhr.send();
+    });
+  },
+
+  // زيادة عداد دولة في Firestore
+  incrementCount: function(countryCode, dhikrId) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      if (!self.isAvailable() || !countryCode) {
+        reject(new Error('API not configured'));
+        return;
       }
-      throw error;
-    }
+
+      var docId = self.makeDocId(countryCode);
+      var url = CONFIG.API.BASE_URL + CONFIG.API.ENDPOINTS.RANKING + '/' + docId;
+
+      // أولاً: نجلب العدد الحالي
+      var getXhr = new XMLHttpRequest();
+      getXhr.timeout = CONFIG.API.TIMEOUT;
+      getXhr.open('GET', url, true);
+      getXhr.setRequestHeader('Content-Type', 'application/json');
+
+      getXhr.onload = function() {
+        var currentCount = 0;
+
+        if (getXhr.status === 200) {
+          try {
+            var doc = JSON.parse(getXhr.responseText);
+            var fields = doc.fields || {};
+            if (fields.count && fields.count.integerValue) {
+              currentCount = parseInt(fields.count.integerValue, 10);
+            }
+          } catch (e) {}
+        }
+
+        // نزيد العدد
+        currentCount += 1;
+
+        // نرسل العدد الجديد
+        var patchXhr = new XMLHttpRequest();
+        patchXhr.timeout = CONFIG.API.TIMEOUT;
+        patchXhr.open('PATCH', url + '?updateMask.fieldPaths=count', true);
+        patchXhr.setRequestHeader('Content-Type', 'application/json');
+
+        patchXhr.onload = function() {
+          if (patchXhr.status === 200 || patchXhr.status === 201) {
+            resolve({
+              success: true,
+              newTotal: currentCount,
+              countryCode: countryCode
+            });
+          } else {
+            reject(new Error('HTTP ' + patchXhr.status));
+          }
+        };
+
+        patchXhr.onerror = function() { reject(new Error('Network error')); };
+        patchXhr.ontimeout = function() { reject(new Error('Timeout')); };
+
+        patchXhr.send(JSON.stringify({
+          fields: {
+            count: { integerValue: String(currentCount) },
+            lastUpdated: { timestampValue: new Date().toISOString() },
+            countryCode: { stringValue: countryCode }
+          }
+        }));
+      };
+
+      getXhr.onerror = function() { reject(new Error('Network error')); };
+      getXhr.ontimeout = function() { reject(new Error('Timeout')); };
+
+      getXhr.send();
+    });
   },
 
-  async registerUser() {
-    if (!this.isAvailable()) return { success: false };
-    try {
-      return await this.request(CONFIG.API.ENDPOINTS.REGISTER, {
-        method: 'POST',
-        body: JSON.stringify({
-          userId: this.getOrCreateUserId(),
-          countryCode: AppState.selectedCountry,
-          timestamp: Date.now()
-        })
-      });
-    } catch (error) {
-      console.warn('فشل تسجيل المستخدم:', error);
-      return { success: false };
-    }
-  },
-
-  async incrementCount(countryCode, dhikrId) {
-    if (!this.isAvailable() || !countryCode) return { success: false };
-
-    const payload = {
-      userId: this.getOrCreateUserId(),
-      countryCode: countryCode,
-      dhikrId: dhikrId,
-      timestamp: Date.now()
-    };
-
-    try {
-      return await this.request(CONFIG.API.ENDPOINTS.INCREMENT, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-    } catch (error) {
-      this.addToPendingSync(payload);
-      return { success: false, queued: true };
-    }
-  },
-
-  addToPendingSync(payload) {
-    AppState.pendingSync.push(payload);
-    if (AppState.pendingSync.length > 100) {
-      AppState.pendingSync = AppState.pendingSync.slice(-100);
-    }
-    AppState.persist();
-  },
-
-  async syncPending() {
-    if (!this.isAvailable() || AppState.pendingSync.length === 0) return;
-
-    const pending = [...AppState.pendingSync];
-    const successful = [];
-
-    for (const payload of pending) {
-      try {
-        await this.request(CONFIG.API.ENDPOINTS.INCREMENT, {
-          method: 'POST',
-          body: JSON.stringify(payload)
-        });
-        successful.push(payload);
-      } catch (error) {
-        break;
+  // تسجيل عداد مستخدم
+  recordCount: function(countryCode, dhikrId) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+      if (!self.isAvailable() || !countryCode) {
+        reject(new Error('API not configured'));
+        return;
       }
-    }
 
-    AppState.pendingSync = AppState.pendingSync.filter(p => !successful.includes(p));
-    AppState.persist();
-  },
+      var url = CONFIG.API.BASE_URL + CONFIG.API.ENDPOINTS.INCREMENT;
+      var docId = self.getOrCreateUserId() + '_' + Date.now();
+      var docUrl = url + '/' + docId;
 
-  async getRanking() {
-    if (!this.isAvailable()) throw new Error('API not configured');
-    return await this.request(CONFIG.API.ENDPOINTS.RANKING, { method: 'GET' });
-  },
+      var xhr = new XMLHttpRequest();
+      xhr.timeout = CONFIG.API.TIMEOUT;
+      xhr.open('POST', docUrl, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
 
-  async getUserStats() {
-    if (!this.isAvailable()) throw new Error('API not configured');
-    return await this.request(CONFIG.API.ENDPOINTS.USER_STATS, { method: 'GET' });
+      xhr.onload = function() {
+        if (xhr.status === 200 || xhr.status === 201) {
+          resolve({ success: true });
+        } else {
+          reject(new Error('HTTP ' + xhr.status));
+        }
+      };
+
+      xhr.onerror = function() { reject(new Error('Network error')); };
+      xhr.ontimeout = function() { reject(new Error('Timeout')); };
+
+      xhr.send(JSON.stringify({
+        fields: {
+          userId: { stringValue: self.getOrCreateUserId() },
+          countryCode: { stringValue: countryCode },
+          dhikrId: { stringValue: dhikrId },
+          timestamp: { timestampValue: new Date().toISOString() }
+        }
+      }));
+    });
   }
 };
 
 // ============================================
-// مراجع DOM - مع تحقق من الوجود
+// مراجع DOM
 // ============================================
 
-function getElement(id) {
-  const el = document.getElementById(id);
-  if (!el) console.warn(`عنصر غير موجود: #${id}`);
-  return el;
-}
+var DOM = {};
 
-const DOM = {
-  app: getElement('app'),
-  splashScreen: getElement('splash-screen'),
-  countryModal: getElement('country-modal'),
-  countrySearch: getElement('country-search'),
-  countryList: getElement('country-list'),
-  toastContainer: getElement('toast-container'),
-  themeToggle: getElement('theme-toggle'),
-  soundToggle: getElement('sound-toggle'),
-  resetBtn: getElement('reset-btn'),
-  dhikrName: getElement('dhikr-name'),
-  dhikrTransliteration: getElement('dhikr-transliteration'),
-  dhikrProgressBar: getElement('dhikr-progress-bar'),
-  dhikrRemaining: getElement('dhikr-remaining'),
-  currentCount: getElement('current-count'),
-  totalCount: getElement('total-count'),
-  countBtn: getElement('count-btn'),
-  countBtnRipple: document.querySelector('.count-btn-ripple'),
-  rankingList: getElement('ranking-list')
-};
+function initDOM() {
+  DOM.app = document.getElementById('app');
+  DOM.splashScreen = document.getElementById('splash-screen');
+  DOM.countryModal = document.getElementById('country-modal');
+  DOM.countrySearch = document.getElementById('country-search');
+  DOM.countryList = document.getElementById('country-list');
+  DOM.toastContainer = document.getElementById('toast-container');
+  DOM.themeToggle = document.getElementById('theme-toggle');
+  DOM.soundToggle = document.getElementById('sound-toggle');
+  DOM.resetBtn = document.getElementById('reset-btn');
+  DOM.dhikrName = document.getElementById('dhikr-name');
+  DOM.dhikrTransliteration = document.getElementById('dhikr-transliteration');
+  DOM.dhikrProgressBar = document.getElementById('dhikr-progress-bar');
+  DOM.dhikrRemaining = document.getElementById('dhikr-remaining');
+  DOM.currentCount = document.getElementById('current-count');
+  DOM.totalCount = document.getElementById('total-count');
+  DOM.countBtn = document.getElementById('count-btn');
+  DOM.countBtnRipple = document.querySelector('.count-btn-ripple');
+  DOM.rankingList = document.getElementById('ranking-list');
+}
 
 // ============================================
 // محرك الصوت
 // ============================================
 
-const AudioEngine = {
+var AudioEngine = {
   ctx: null,
 
-  init() {
+  init: function() {
     try {
       if (!this.ctx) {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -496,11 +579,11 @@ const AudioEngine = {
     }
   },
 
-  playClick() {
+  playClick: function() {
     if (!AppState.soundEnabled || !this.ctx) return;
     try {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+      var osc = this.ctx.createOscillator();
+      var gain = this.ctx.createGain();
       osc.connect(gain);
       gain.connect(this.ctx.destination);
       osc.type = 'sine';
@@ -510,31 +593,28 @@ const AudioEngine = {
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
       osc.start(this.ctx.currentTime);
       osc.stop(this.ctx.currentTime + 0.15);
-    } catch (e) {
-      // صوت مش شغال، استمر
-    }
+    } catch (e) {}
   },
 
-  playCompletion() {
+  playCompletion: function() {
     if (!AppState.soundEnabled || !this.ctx) return;
     try {
-      const frequencies = [523.25, 659.25, 783.99];
-      frequencies.forEach((freq, i) => {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
+      var frequencies = [523.25, 659.25, 783.99];
+      var self = this;
+      frequencies.forEach(function(freq, i) {
+        var osc = self.ctx.createOscillator();
+        var gain = self.ctx.createGain();
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(self.ctx.destination);
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, this.ctx.currentTime + i * 0.05);
-        gain.gain.setValueAtTime(0, this.ctx.currentTime + i * 0.05);
-        gain.gain.linearRampToValueAtTime(CONFIG.SOUND_VOLUME * 0.5, this.ctx.currentTime + i * 0.05 + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + i * 0.05 + 0.3);
-        osc.start(this.ctx.currentTime + i * 0.05);
-        osc.stop(this.ctx.currentTime + i * 0.05 + 0.3);
+        osc.frequency.setValueAtTime(freq, self.ctx.currentTime + i * 0.05);
+        gain.gain.setValueAtTime(0, self.ctx.currentTime + i * 0.05);
+        gain.gain.linearRampToValueAtTime(CONFIG.SOUND_VOLUME * 0.5, self.ctx.currentTime + i * 0.05 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, self.ctx.currentTime + i * 0.05 + 0.3);
+        osc.start(self.ctx.currentTime + i * 0.05);
+        osc.stop(self.ctx.currentTime + i * 0.05 + 0.3);
       });
-    } catch (e) {
-      // استمر بدون صوت
-    }
+    } catch (e) {}
   }
 };
 
@@ -542,15 +622,13 @@ const AudioEngine = {
 // محرك الاهتزاز
 // ============================================
 
-const VibrationEngine = {
-  trigger() {
+var VibrationEngine = {
+  trigger: function() {
     try {
       if (navigator.vibrate) {
         navigator.vibrate(CONFIG.VIBRATION_DURATION);
       }
-    } catch (e) {
-      // استمر بدون اهتزاز
-    }
+    } catch (e) {}
   }
 };
 
@@ -558,29 +636,32 @@ const VibrationEngine = {
 // نظام الإشعارات (Toast)
 // ============================================
 
-const ToastSystem = {
+var ToastSystem = {
   queue: [],
   isShowing: false,
 
-  show(message, type = 'default', duration = CONFIG.TOAST_DURATION) {
-    this.queue.push({ message, type, duration });
+  show: function(message, type, duration) {
+    type = type || 'default';
+    duration = duration || CONFIG.TOAST_DURATION;
+    this.queue.push({ message: message, type: type, duration: duration });
     if (!this.isShowing) {
       this.processQueue();
     }
   },
 
-  async processQueue() {
+  processQueue: function() {
+    var self = this;
     if (this.queue.length === 0) {
       this.isShowing = false;
       return;
     }
 
     this.isShowing = true;
-    const { message, type, duration } = this.queue.shift();
+    var item = this.queue.shift();
 
-    const toast = document.createElement('div');
-    toast.className = `toast ${type === 'gold' ? 'toast-gold' : ''}`;
-    toast.textContent = message;
+    var toast = document.createElement('div');
+    toast.className = 'toast' + (item.type === 'gold' ? ' toast-gold' : '');
+    toast.textContent = item.message;
     toast.setAttribute('role', 'status');
     toast.setAttribute('aria-live', 'polite');
 
@@ -588,24 +669,22 @@ const ToastSystem = {
       DOM.toastContainer.appendChild(toast);
       toast.offsetHeight;
 
-      requestAnimationFrame(() => {
+      requestAnimationFrame(function() {
         toast.classList.add('show');
       });
 
-      await this.wait(duration);
+      setTimeout(function() {
+        toast.classList.remove('show');
+        toast.classList.add('hide');
 
-      toast.classList.remove('show');
-      toast.classList.add('hide');
-
-      await this.wait(300);
-      if (toast.parentNode) toast.remove();
+        setTimeout(function() {
+          if (toast.parentNode) toast.remove();
+          self.processQueue();
+        }, 300);
+      }, item.duration);
+    } else {
+      self.processQueue();
     }
-
-    this.processQueue();
-  },
-
-  wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
   }
 };
 
@@ -613,137 +692,131 @@ const ToastSystem = {
 // محدد الدول
 // ============================================
 
-const CountrySelector = {
+var CountrySelector = {
   filteredCountries: [],
 
-  init() {
-    this.filteredCountries = [...COUNTRIES];
+  init: function() {
+    this.filteredCountries = COUNTRIES.slice();
     this.renderList();
     this.attachEvents();
   },
 
-  attachEvents() {
+  attachEvents: function() {
+    var self = this;
     if (!DOM.countrySearch) return;
 
-    DOM.countrySearch.addEventListener('input', (e) => {
-      this.handleSearch(e.target.value);
+    DOM.countrySearch.addEventListener('input', function(e) {
+      self.handleSearch(e.target.value);
     });
 
-    DOM.countrySearch.addEventListener('keydown', (e) => {
+    DOM.countrySearch.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') {
-        const firstItem = DOM.countryList ? DOM.countryList.querySelector('.country-item') : null;
+        var firstItem = DOM.countryList ? DOM.countryList.querySelector('.country-item') : null;
         if (firstItem) firstItem.click();
       }
     });
   },
 
-  handleSearch(query) {
-    const normalizedQuery = query.toLowerCase().trim();
+  handleSearch: function(query) {
+    var normalizedQuery = query.toLowerCase().trim();
     if (!normalizedQuery) {
-      this.filteredCountries = [...COUNTRIES];
+      this.filteredCountries = COUNTRIES.slice();
     } else {
-      this.filteredCountries = COUNTRIES.filter(country => 
-        country.name.toLowerCase().includes(normalizedQuery) ||
-        country.code.toLowerCase().includes(normalizedQuery)
-      );
+      this.filteredCountries = COUNTRIES.filter(function(country) {
+        return country.name.toLowerCase().indexOf(normalizedQuery) !== -1 ||
+               country.code.toLowerCase().indexOf(normalizedQuery) !== -1;
+      });
     }
     this.renderList();
   },
 
-  renderList() {
+  renderList: function() {
     if (!DOM.countryList) return;
     DOM.countryList.innerHTML = '';
 
     if (this.filteredCountries.length === 0) {
-      const empty = document.createElement('div');
+      var empty = document.createElement('div');
       empty.className = 'country-item-empty';
       empty.textContent = 'لم يتم العثور على دول';
       DOM.countryList.appendChild(empty);
       return;
     }
 
-    const fragment = document.createDocumentFragment();
-    this.filteredCountries.forEach(country => {
-      const item = document.createElement('button');
+    var fragment = document.createDocumentFragment();
+    var self = this;
+
+    this.filteredCountries.forEach(function(country) {
+      var item = document.createElement('button');
       item.className = 'country-item';
       item.setAttribute('role', 'option');
-      item.setAttribute('aria-label', `اختيار ${country.name}`);
-      item.innerHTML = `
-        <span class="country-item-flag" aria-hidden="true">${country.flag}</span>
-        <span class="country-item-name">${this.escapeHtml(country.name)}</span>
-      `;
-      item.addEventListener('click', () => this.selectCountry(country));
+      item.setAttribute('aria-label', 'اختيار ' + country.name);
+      item.innerHTML = '<span class="country-item-flag" aria-hidden="true">' + country.flag + '</span>' +
+        '<span class="country-item-name">' + self.escapeHtml(country.name) + '</span>';
+      item.addEventListener('click', function() {
+        self.selectCountry(country);
+      });
       fragment.appendChild(item);
     });
+
     DOM.countryList.appendChild(fragment);
   },
 
-  async selectCountry(country) {
+  selectCountry: function(country) {
     AppState.setState({ selectedCountry: country.code });
     this.closeModal();
-
-    if (CactusAPI.isAvailable()) {
-      try {
-        await CactusAPI.registerUser();
-        ToastSystem.show(`تم الاختيار: ${country.flag} ${country.name} ✅`, 'default', 1500);
-      } catch (error) {
-        ToastSystem.show(`تم الاختيار: ${country.flag} ${country.name}`, 'default', 1500);
-      }
-    } else {
-      ToastSystem.show(`تم الاختيار: ${country.flag} ${country.name}`, 'default', 1500);
-    }
-
+    ToastSystem.show('تم الاختيار: ' + country.flag + ' ' + country.name, 'default', 1500);
     RankingSystem.render();
     RankingSystem.syncWithBackend();
   },
 
-  openModal() {
+  openModal: function() {
     if (!DOM.countryModal) return;
     DOM.countryModal.classList.add('active');
     DOM.countryModal.setAttribute('aria-hidden', 'false');
-    setTimeout(() => {
+    setTimeout(function() {
       if (DOM.countrySearch) DOM.countrySearch.focus();
     }, 300);
     if (DOM.countrySearch) DOM.countrySearch.value = '';
-    this.filteredCountries = [...COUNTRIES];
+    this.filteredCountries = COUNTRIES.slice();
     this.renderList();
   },
 
-  closeModal() {
+  closeModal: function() {
     if (!DOM.countryModal) return;
     DOM.countryModal.classList.remove('active');
     DOM.countryModal.setAttribute('aria-hidden', 'true');
   },
 
-  escapeHtml(str) {
-    const div = document.createElement('div');
+  escapeHtml: function(str) {
+    var div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
   }
 };
 
 // ============================================
-// نظام التصنيف - يعمل محلي ومع API
+// نظام التصنيف - مع Firebase
 // ============================================
 
-const RankingSystem = {
+var RankingSystem = {
   rankingData: [],
   isLoading: false,
   lastSyncTime: null,
   apiConnected: false,
 
-  init() {
+  init: function() {
     this.loadFromStorage();
     this.render();
     this.syncWithBackend();
-    setInterval(() => this.syncWithBackend(), 30000);
+    var self = this;
+    setInterval(function() { self.syncWithBackend(); }, 30000);
   },
 
-  loadFromStorage() {
+  loadFromStorage: function() {
     try {
-      const stored = localStorage.getItem('tasbeeh_ranking_cache');
+      var stored = localStorage.getItem('tasbeeh_ranking_cache');
       if (stored) {
-        const parsed = JSON.parse(stored);
+        var parsed = JSON.parse(stored);
         this.rankingData = parsed.data || [];
         this.lastSyncTime = parsed.timestamp || null;
       } else {
@@ -754,7 +827,7 @@ const RankingSystem = {
     }
   },
 
-  saveToStorage() {
+  saveToStorage: function() {
     try {
       localStorage.setItem('tasbeeh_ranking_cache', JSON.stringify({
         data: this.rankingData,
@@ -765,8 +838,10 @@ const RankingSystem = {
     }
   },
 
-  async syncWithBackend() {
-    if (!CactusAPI.isAvailable()) {
+  syncWithBackend: function() {
+    var self = this;
+
+    if (!FirebaseAPI.isAvailable()) {
       this.apiConnected = false;
       this.render();
       return;
@@ -775,13 +850,10 @@ const RankingSystem = {
     this.isLoading = true;
     this.render();
 
-    try {
-      await CactusAPI.syncPending();
-      const result = await CactusAPI.getRanking();
-
+    FirebaseAPI.getRanking().then(function(result) {
       if (result.success && Array.isArray(result.data)) {
-        this.rankingData = result.data.map(item => {
-          const country = COUNTRIES.find(c => c.code === item.countryCode);
+        self.rankingData = result.data.map(function(item) {
+          var country = COUNTRIES.find(function(c) { return c.code === item.countryCode; });
           return {
             rank: item.rank,
             countryCode: item.countryCode,
@@ -790,55 +862,57 @@ const RankingSystem = {
             totalClicks: item.totalClicks
           };
         });
-        this.apiConnected = true;
-        this.lastSyncTime = Date.now();
-        this.saveToStorage();
+        self.apiConnected = true;
+        self.lastSyncTime = Date.now();
+        self.saveToStorage();
       }
-    } catch (error) {
-      console.warn('تعذر الاتصال بـ API:', error);
-      this.apiConnected = false;
-    } finally {
-      this.isLoading = false;
-      this.render();
-    }
+      self.isLoading = false;
+      self.render();
+    }).catch(function(error) {
+      console.warn('تعذر الاتصال بـ Firebase:', error);
+      self.apiConnected = false;
+      self.isLoading = false;
+      self.render();
+    });
   },
 
-  async incrementCountryClicks(countryCode) {
+  incrementCountryClicks: function(countryCode) {
     if (!countryCode) return;
     this.updateLocalRanking(countryCode);
 
-    if (CactusAPI.isAvailable()) {
-      try {
-        const result = await CactusAPI.incrementCount(
-          countryCode, 
-          DHIKR_LIST[AppState.currentDhikrIndex].id
-        );
-        if (result.success && result.ranking) {
-          this.rankingData = result.ranking.map(item => {
-            const country = COUNTRIES.find(c => c.code === item.countryCode);
-            return {
-              rank: item.rank,
-              countryCode: item.countryCode,
-              countryName: country ? country.name : item.countryCode,
-              flag: country ? country.flag : '🏳️',
-              totalClicks: item.totalClicks
-            };
-          });
-          this.saveToStorage();
-          this.render();
-        }
-      } catch (error) {
-        console.warn('فشل إرسال العداد:', error);
-      }
+    if (FirebaseAPI.isAvailable()) {
+      var self = this;
+      FirebaseAPI.incrementCount(countryCode, DHIKR_LIST[AppState.currentDhikrIndex].id)
+        .then(function(result) {
+          if (result.success) {
+            self.syncWithBackend();
+          }
+        })
+        .catch(function(error) {
+          console.warn('فشل إرسال العداد:', error);
+        });
     }
   },
 
-  updateLocalRanking(countryCode) {
-    const entry = this.rankingData.find(r => r.countryCode === countryCode);
+  updateLocalRanking: function(countryCode) {
+    var entry = null;
+    for (var i = 0; i < this.rankingData.length; i++) {
+      if (this.rankingData[i].countryCode === countryCode) {
+        entry = this.rankingData[i];
+        break;
+      }
+    }
+
     if (entry) {
       entry.totalClicks += 1;
     } else {
-      const country = COUNTRIES.find(c => c.code === countryCode);
+      var country = null;
+      for (var j = 0; j < COUNTRIES.length; j++) {
+        if (COUNTRIES[j].code === countryCode) {
+          country = COUNTRIES[j];
+          break;
+        }
+      }
       if (country) {
         this.rankingData.push({
           rank: this.rankingData.length + 1,
@@ -849,88 +923,88 @@ const RankingSystem = {
         });
       }
     }
-    this.rankingData.sort((a, b) => b.totalClicks - a.totalClicks);
-    this.rankingData.forEach((item, index) => { item.rank = index + 1; });
+
+    this.rankingData.sort(function(a, b) {
+      return b.totalClicks - a.totalClicks;
+    });
+
+    for (var k = 0; k < this.rankingData.length; k++) {
+      this.rankingData[k].rank = k + 1;
+    }
+
     this.saveToStorage();
     this.render();
   },
 
-  formatNumber(num) {
+  formatNumber: function(num) {
     return num.toLocaleString('ar-SA');
   },
 
-  render() {
+  render: function() {
     if (!DOM.rankingList) return;
     DOM.rankingList.innerHTML = '';
 
     if (this.isLoading) {
-      DOM.rankingList.innerHTML = `
-        <div style="text-align:center;padding:2rem;color:var(--color-text-muted)">
-          <div style="font-size:2rem;margin-bottom:0.5rem">⏳</div>
-          <div style="font-weight:600">جاري تحميل التصنيف...</div>
-        </div>`;
+      DOM.rankingList.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--color-text-muted)">' +
+        '<div style="font-size:2rem;margin-bottom:0.5rem">⏳</div>' +
+        '<div style="font-weight:600">جاري تحميل التصنيف...</div></div>';
       return;
     }
 
-    const isApiConfigured = CactusAPI.isAvailable();
+    var isApiConfigured = FirebaseAPI.isAvailable();
 
     if (!isApiConfigured && this.rankingData.length === 0) {
-      DOM.rankingList.innerHTML = `
-        <div style="text-align:center;padding:2rem;color:var(--color-text-muted)">
-          <div style="font-size:2rem;margin-bottom:0.5rem">📊</div>
-          <div style="font-weight:600;margin-bottom:0.25rem">التصنيف المحلي</div>
-          <div style="font-size:0.875rem">ابدأ العد ليظهر تصنيف بلدك</div>
-        </div>`;
+      DOM.rankingList.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--color-text-muted)">' +
+        '<div style="font-size:2rem;margin-bottom:0.5rem">📊</div>' +
+        '<div style="font-weight:600;margin-bottom:0.25rem">التصنيف المحلي</div>' +
+        '<div style="font-size:0.875rem">ابدأ العد ليظهر تصنيف بلدك</div></div>';
       return;
     }
 
     if (!this.apiConnected && this.rankingData.length === 0) {
-      DOM.rankingList.innerHTML = `
-        <div style="text-align:center;padding:2rem;color:var(--color-text-muted)">
-          <div style="font-size:2rem;margin-bottom:0.5rem">📡</div>
-          <div style="font-weight:600;margin-bottom:0.25rem">تعذر الاتصال بالخادم</div>
-          <div style="font-size:0.875rem">التصنيف سيظهر عند استعادة الاتصال</div>
-        </div>`;
+      DOM.rankingList.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--color-text-muted)">' +
+        '<div style="font-size:2rem;margin-bottom:0.5rem">📡</div>' +
+        '<div style="font-weight:600;margin-bottom:0.25rem">تعذر الاتصال بالخادم</div>' +
+        '<div style="font-size:0.875rem">التصنيف سيظهر عند استعادة الاتصال</div></div>';
       return;
     }
 
     if (this.rankingData.length === 0) {
-      DOM.rankingList.innerHTML = `
-        <div style="text-align:center;padding:2rem;color:var(--color-text-muted)">
-          <div style="font-size:2rem;margin-bottom:0.5rem">📊</div>
-          <div style="font-weight:600">التصنيف العالمي</div>
-          <div style="font-size:0.875rem">ابدأ العد ليظهر تصنيف بلدك هنا</div>
-        </div>`;
+      DOM.rankingList.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--color-text-muted)">' +
+        '<div style="font-size:2rem;margin-bottom:0.5rem">📊</div>' +
+        '<div style="font-weight:600">التصنيف العالمي</div>' +
+        '<div style="font-size:0.875rem">ابدأ العد ليظهر تصنيف بلدك هنا</div></div>';
       return;
     }
 
-    const fragment = document.createDocumentFragment();
-    const displayData = this.rankingData.slice(0, 10);
+    var fragment = document.createDocumentFragment();
+    var displayData = this.rankingData.slice(0, 10);
+    var self = this;
 
-    displayData.forEach(item => {
-      const isUserCountry = item.countryCode === AppState.selectedCountry;
-      const row = document.createElement('div');
-      row.className = `ranking-item ${isUserCountry ? 'highlight' : ''}`;
+    displayData.forEach(function(item) {
+      var isUserCountry = item.countryCode === AppState.selectedCountry;
+      var row = document.createElement('div');
+      row.className = 'ranking-item' + (isUserCountry ? ' highlight' : '');
       row.setAttribute('role', 'listitem');
 
-      const rankClass = item.rank === 1 ? 'gold' : 
-                        item.rank === 2 ? 'silver' : 
-                        item.rank === 3 ? 'bronze' : 'normal';
+      var rankClass = 'normal';
+      if (item.rank === 1) rankClass = 'gold';
+      else if (item.rank === 2) rankClass = 'silver';
+      else if (item.rank === 3) rankClass = 'bronze';
 
-      row.innerHTML = `
-        <div class="ranking-rank ${rankClass}" aria-label="المرتبة ${item.rank}">${item.rank}</div>
-        <span class="ranking-flag" aria-hidden="true">${item.flag}</span>
-        <span class="ranking-country">${this.escapeHtml(item.countryName)}</span>
-        <span class="ranking-clicks">${this.formatNumber(item.totalClicks)}</span>
-      `;
+      row.innerHTML = '<div class="ranking-rank ' + rankClass + '" aria-label="المرتبة ' + item.rank + '">' + item.rank + '</div>' +
+        '<span class="ranking-flag" aria-hidden="true">' + item.flag + '</span>' +
+        '<span class="ranking-country">' + self.escapeHtml(item.countryName) + '</span>' +
+        '<span class="ranking-clicks">' + self.formatNumber(item.totalClicks) + '</span>';
+
       fragment.appendChild(row);
     });
 
     DOM.rankingList.appendChild(fragment);
   },
 
-  escapeHtml(str) {
-    const div = document.createElement('div');
+  escapeHtml: function(str) {
+    var div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
   }
@@ -940,21 +1014,21 @@ const RankingSystem = {
 // مدير الذكر
 // ============================================
 
-const DhikrManager = {
-  getCurrentDhikr() {
+var DhikrManager = {
+  getCurrentDhikr: function() {
     return DHIKR_LIST[AppState.currentDhikrIndex];
   },
 
-  getRemaining() {
+  getRemaining: function() {
     return CONFIG.DHIKR_CYCLE_SIZE - AppState.currentDhikrCount;
   },
 
-  getProgress() {
+  getProgress: function() {
     return (AppState.currentDhikrCount / CONFIG.DHIKR_CYCLE_SIZE) * 100;
   },
 
-  nextDhikr() {
-    const nextIndex = (AppState.currentDhikrIndex + 1) % DHIKR_LIST.length;
+  nextDhikr: function() {
+    var nextIndex = (AppState.currentDhikrIndex + 1) % DHIKR_LIST.length;
     AppState.setState({
       currentDhikrIndex: nextIndex,
       currentDhikrCount: 0
@@ -962,30 +1036,31 @@ const DhikrManager = {
     this.animateTransition();
   },
 
-  animateTransition() {
-    const nameEl = DOM.dhikrName;
-    const transEl = DOM.dhikrTransliteration;
+  animateTransition: function() {
+    var nameEl = DOM.dhikrName;
+    var transEl = DOM.dhikrTransliteration;
     if (nameEl) nameEl.classList.add('changing');
     if (transEl) transEl.classList.add('changing');
 
-    setTimeout(() => {
-      this.updateDisplay();
+    var self = this;
+    setTimeout(function() {
+      self.updateDisplay();
       if (nameEl) nameEl.classList.remove('changing');
       if (transEl) transEl.classList.remove('changing');
       AudioEngine.playCompletion();
     }, 300);
   },
 
-  updateDisplay() {
-    const dhikr = this.getCurrentDhikr();
-    const remaining = this.getRemaining();
-    const progress = this.getProgress();
+  updateDisplay: function() {
+    var dhikr = this.getCurrentDhikr();
+    var remaining = this.getRemaining();
+    var progress = this.getProgress();
 
     if (DOM.dhikrName) DOM.dhikrName.textContent = dhikr.name;
     if (DOM.dhikrTransliteration) DOM.dhikrTransliteration.textContent = dhikr.transliteration;
-    if (DOM.dhikrRemaining) DOM.dhikrRemaining.textContent = `متبقي ${remaining}`;
+    if (DOM.dhikrRemaining) DOM.dhikrRemaining.textContent = 'متبقي ' + remaining;
     if (DOM.dhikrProgressBar) {
-      DOM.dhikrProgressBar.style.width = `${progress}%`;
+      DOM.dhikrProgressBar.style.width = progress + '%';
       DOM.dhikrProgressBar.setAttribute('aria-valuenow', AppState.currentDhikrCount);
     }
     if (DOM.currentCount) DOM.currentCount.textContent = AppState.currentDhikrCount;
@@ -997,10 +1072,10 @@ const DhikrManager = {
 // محرك العداد
 // ============================================
 
-const CounterEngine = {
-  count() {
-    const newDhikrCount = AppState.currentDhikrCount + 1;
-    const newTotalClicks = AppState.totalClicks + 1;
+var CounterEngine = {
+  count: function() {
+    var newDhikrCount = AppState.currentDhikrCount + 1;
+    var newTotalClicks = AppState.totalClicks + 1;
 
     AppState.setState({
       currentDhikrCount: newDhikrCount,
@@ -1021,7 +1096,7 @@ const CounterEngine = {
     RankingSystem.incrementCountryClicks(AppState.selectedCountry);
   },
 
-  triggerEffects() {
+  triggerEffects: function() {
     if (DOM.currentCount) {
       DOM.currentCount.classList.remove('pulse');
       void DOM.currentCount.offsetWidth;
@@ -1044,28 +1119,28 @@ const CounterEngine = {
     VibrationEngine.trigger();
   },
 
-  handleDhikrComplete() {
+  handleDhikrComplete: function() {
     DhikrManager.nextDhikr();
     ToastSystem.show(
-      `تم الإكمال! التالي: ${DhikrManager.getCurrentDhikr().name}`,
+      'تم الإكمال! التالي: ' + DhikrManager.getCurrentDhikr().name,
       'gold',
       2500
     );
   },
 
-  showEncouragement() {
-    const messages = [
+  showEncouragement: function() {
+    var messages = [
       'ممتاز! جزاك الله خيراُ.',
       'ما شاء الله! استمر.',
       'بارك الله فيك! رائع.',
       'جزاك الله خيراُ على ذكرك.',
       'جميل! استمر على الاستمرارية.'
     ];
-    const message = messages[Math.floor(Math.random() * messages.length)];
+    var message = messages[Math.floor(Math.random() * messages.length)];
     ToastSystem.show(message, 'gold');
   },
 
-  reset() {
+  reset: function() {
     AppState.setState({ currentDhikrCount: 0 });
     DhikrManager.updateDisplay();
     ToastSystem.show('تم إعادة تعيين الذكر الحالي', 'default', 1500);
@@ -1076,25 +1151,25 @@ const CounterEngine = {
 // مدير الوضع (فاتح/داكن)
 // ============================================
 
-const ThemeManager = {
-  init() {
-    const savedTheme = AppState.theme;
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
+var ThemeManager = {
+  init: function() {
+    var savedTheme = AppState.theme;
+    var systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
     this.setTheme(theme);
 
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-      if (!AppState.theme) this.setTheme(e.matches ? 'dark' : 'light');
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+      if (!AppState.theme) ThemeManager.setTheme(e.matches ? 'dark' : 'light');
     });
   },
 
-  setTheme(theme) {
-    AppState.setState({ theme });
+  setTheme: function(theme) {
+    AppState.setState({ theme: theme });
     document.documentElement.setAttribute('data-theme', theme);
   },
 
-  toggle() {
-    const newTheme = AppState.theme === 'light' ? 'dark' : 'light';
+  toggle: function() {
+    var newTheme = AppState.theme === 'light' ? 'dark' : 'light';
     this.setTheme(newTheme);
   }
 };
@@ -1103,13 +1178,13 @@ const ThemeManager = {
 // مدير الصوت
 // ============================================
 
-const SoundManager = {
-  init() {
+var SoundManager = {
+  init: function() {
     document.body.setAttribute('data-sound', AppState.soundEnabled ? 'on' : 'off');
   },
 
-  toggle() {
-    const newState = !AppState.soundEnabled;
+  toggle: function() {
+    var newState = !AppState.soundEnabled;
     AppState.setState({ soundEnabled: newState });
     document.body.setAttribute('data-sound', newState ? 'on' : 'off');
     ToastSystem.show(
@@ -1124,44 +1199,44 @@ const SoundManager = {
 // معالجات الأحداث
 // ============================================
 
-const EventHandlers = {
-  init() {
+var EventHandlers = {
+  init: function() {
     this.initCountButton();
     this.initKeyboard();
     this.initControls();
     this.initTouch();
   },
 
-  initCountButton() {
-    const btn = DOM.countBtn;
+  initCountButton: function() {
+    var btn = DOM.countBtn;
     if (!btn) return;
 
-    btn.addEventListener('mousedown', (e) => {
+    btn.addEventListener('mousedown', function(e) {
       e.preventDefault();
       btn.setAttribute('aria-pressed', 'true');
     });
 
-    btn.addEventListener('mouseup', () => {
+    btn.addEventListener('mouseup', function() {
       btn.setAttribute('aria-pressed', 'false');
     });
 
-    btn.addEventListener('mouseleave', () => {
+    btn.addEventListener('mouseleave', function() {
       btn.setAttribute('aria-pressed', 'false');
     });
 
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', function(e) {
       e.preventDefault();
       CounterEngine.count();
     });
 
-    btn.addEventListener('touchend', (e) => {
+    btn.addEventListener('touchend', function(e) {
       e.preventDefault();
       btn.click();
     });
   },
 
-  initKeyboard() {
-    document.addEventListener('keydown', (e) => {
+  initKeyboard: function() {
+    document.addEventListener('keydown', function(e) {
       if (e.code === 'Space' || e.code === 'Enter') {
         e.preventDefault();
         if (document.activeElement !== DOM.countrySearch) {
@@ -1178,40 +1253,46 @@ const EventHandlers = {
       }
     });
 
-    document.addEventListener('keyup', (e) => {
+    document.addEventListener('keyup', function(e) {
       if (e.code === 'Space' || e.code === 'Enter') {
         if (DOM.countBtn) DOM.countBtn.setAttribute('aria-pressed', 'false');
       }
     });
   },
 
-  initControls() {
+  initControls: function() {
     if (DOM.themeToggle) {
-      DOM.themeToggle.addEventListener('click', () => ThemeManager.toggle());
+      DOM.themeToggle.addEventListener('click', function() { ThemeManager.toggle(); });
     }
     if (DOM.soundToggle) {
-      DOM.soundToggle.addEventListener('click', () => SoundManager.toggle());
+      DOM.soundToggle.addEventListener('click', function() { SoundManager.toggle(); });
     }
     if (DOM.resetBtn) {
-      DOM.resetBtn.addEventListener('click', () => CounterEngine.reset());
+      DOM.resetBtn.addEventListener('click', function() { CounterEngine.reset(); });
     }
   },
 
-  initTouch() {
-    document.addEventListener('touchmove', (e) => {
+  initTouch: function() {
+    document.addEventListener('touchmove', function(e) {
       if (e.target.closest('.country-list')) return;
     }, { passive: true });
   }
 };
 
 // ============================================
-// تهيئة التطبيق - مع حماية كاملة من الأخطاء
+// تهيئة التطبيق
 // ============================================
 
-const App = {
-  async init() {
+var App = {
+  init: function() {
     try {
+      // أولاً: نجهز DOM
+      initDOM();
+
+      // نحمّل الحالة
       AppState.load();
+
+      // نشغل المديرين
       ThemeManager.init();
       SoundManager.init();
       CountrySelector.init();
@@ -1219,37 +1300,33 @@ const App = {
       DhikrManager.updateDisplay();
       EventHandlers.init();
 
-      await this.showSplash();
+      // نخفي شاشة التحميل
+      this.showSplash().then(function() {
+        // نفتح مودال الدولة لو لسه مختارش
+        if (!AppState.selectedCountry) {
+          CountrySelector.openModal();
+        }
+        // نظهر التطبيق
+        App.revealApp();
+      });
 
-      if (!AppState.selectedCountry) {
-        CountrySelector.openModal();
-      }
-
-      this.revealApp();
-
-      if (CactusAPI.isAvailable()) {
-        CactusAPI.syncPending().catch(() => {});
-      }
     } catch (error) {
       console.error('خطأ في تهيئة التطبيق:', error);
-      // حتى لو فيه خطأ، أخفي شاشة التحميل
+      // حتى لو فيه خطأ، نخفي السبلاش ونظهر التطبيق
       if (DOM.splashScreen) DOM.splashScreen.classList.add('hidden');
-      if (DOM.app) {
-        DOM.app.setAttribute('aria-hidden', 'false');
-        DOM.app.classList.add('visible');
-      }
+      App.revealApp();
     }
   },
 
-  showSplash() {
-    return new Promise(resolve => {
-      const startTime = Date.now();
+  showSplash: function() {
+    return new Promise(function(resolve) {
+      var startTime = Date.now();
 
-      const hideSplash = () => {
-        const elapsed = Date.now() - startTime;
-        const remaining = Math.max(0, CONFIG.SPLASH_MIN_TIME - elapsed);
+      var hideSplash = function() {
+        var elapsed = Date.now() - startTime;
+        var remaining = Math.max(0, CONFIG.SPLASH_MIN_TIME - elapsed);
 
-        setTimeout(() => {
+        setTimeout(function() {
           if (DOM.splashScreen) DOM.splashScreen.classList.add('hidden');
           resolve();
         }, remaining);
@@ -1263,10 +1340,10 @@ const App = {
     });
   },
 
-  revealApp() {
+  revealApp: function() {
     if (DOM.app) {
       DOM.app.setAttribute('aria-hidden', 'false');
-      requestAnimationFrame(() => {
+      requestAnimationFrame(function() {
         DOM.app.classList.add('visible');
       });
     }
@@ -1274,9 +1351,14 @@ const App = {
 };
 
 // ============================================
-// التشغيل
+// التشغيل - لما الصفحة تخلص تحميل
 // ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() {
+    App.init();
+  });
+} else {
+  // DOM جاهز بالفعل
   App.init();
-});
+}
