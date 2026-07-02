@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="عداد تسبيح رقمي جميل للأذكار اليومية. تطبيق مجاني بدون إعلانات لتتبع صلواتك وأذكارك.">
+  <meta name="keywords" content="تسبيح, ذكر, عداد, إسلامي, صلاة, سبحة رقمية, سبحان الله, الحمد لله">
+  <meta name="author" content="عداد التسبيح الرقمي">
+  <meta name="theme-color" content="#1B5E20">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="التسبيح">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="عداد التسبيح الرقمي">
+  <meta property="og:description" content="عداد تسبيح رقمي جميل للأذكار اليومية. تطبيق مجاني بدون إعلانات.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://tasbeeh.app">
+  <meta property="og:image" content="https://tasbeeh.app/icons/og-image.png">
+  <meta property="og:locale" content="ar_SA">
+
+  <!-- Twitter Cards -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="عداد التسبيح الرقمي">
+  <meta name="twitter:description" content="عداد تسبيح رقمي جميل للأذكار اليومية. تطبيق مجاني بدون إعلانات.">
+  <meta name="twitter:image" content="https://tasbeeh.app/icons/og-image.png">
+
+  <!-- Structured Data (JSON-LD) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "عداد التسبيح الرقمي",
+    "description": "عداد تسبيح رقمي جميل للأذكار اليومية وتتبع الصلوات.",
+    "applicationCategory": "ReligiousApplication",
+    "operatingSystem": "Any",
+    "inLanguage": "ar",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+
+  <title>عداد التسبيح الرقمي | تطبيق الأذكار المتميز</title>
+
+  <!-- Google Fonts: Cairo for Arabic UI, Amiri for dhikr text -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Amiri:wght@400;700&display=swap" rel="stylesheet">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+  <!-- Manifest -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- شاشة التحميل -->
+  <div id="splash-screen" class="splash-screen" role="dialog" aria-label="جاري التحميل" aria-hidden="false">
+    <div class="splash-content">
+      <div class="splash-icon" aria-hidden="true">🕌</div>
+      <h1 class="splash-title">عداد التسبيح</h1>
+      <p class="splash-subtitle">رفيقك اليومي للأذكار والتسبيح</p>
+      <div class="splash-loader" role="progressbar" aria-label="جاري تحميل التطبيق"></div>
+    </div>
+  </div>
+
+  <!-- نموذج اختيار الدولة -->
+  <div id="country-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="country-modal-title" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content country-modal-content">
+      <div class="modal-header">
+        <h2 id="country-modal-title" class="modal-title">اختر بلدك</h2>
+        <p class="modal-subtitle">يساعدنا هذا في عرضك على لوحة المتصدرين العالمية</p>
+      </div>
+      <div class="modal-body">
+        <div class="country-search-wrapper">
+          <input 
+            type="text" 
+            id="country-search" 
+            class="country-search" 
+            placeholder="ابحث عن الدولة..." 
+            aria-label="البحث عن الدول"
+            autocomplete="off"
+          >
+          <span class="country-search-icon" aria-hidden="true">🔍</span>
+        </div>
+        <div id="country-list" class="country-list" role="listbox" aria-label="قائمة الدول"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- حاوية الإشعارات -->
+  <div id="toast-container" class="toast-container" role="region" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- التطبيق الرئيسي -->
+  <div id="app" class="app" aria-hidden="true">
+    <!-- الرأس -->
+    <header class="app-header" role="banner">
+      <div class="header-brand">
+        <span class="header-icon" aria-hidden="true">🕌</span>
+        <h1 class="header-title">عداد التسبيح</h1>
+      </div>
+      <div class="header-actions">
+        <button 
+          id="theme-toggle" 
+          class="icon-btn" 
+          aria-label="تبديل الوضع الداكن" 
+          title="تبديل الوضع الداكن"
+        >
+          <span class="theme-icon-light" aria-hidden="true">☀️</span>
+          <span class="theme-icon-dark" aria-hidden="true">🌙</span>
+        </button>
+        <button 
+          id="sound-toggle" 
+          class="icon-btn" 
+          aria-label="تبديل المؤثرات الصوتية" 
+          title="تبديل المؤثرات الصوتية"
+        >
+          <span class="sound-icon-on" aria-hidden="true">🔊</span>
+          <span class="sound-icon-off" aria-hidden="true">🔇</span>
+        </button>
+        <button 
+          id="reset-btn" 
+          class="icon-btn" 
+          aria-label="إعادة تعيين عداد الذكر الحالي" 
+          title="إعادة تعيين الذكر الحالي"
+        >
+          <span aria-hidden="true">↺</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- المحتوى الرئيسي -->
+    <main class="app-main" role="main">
+      <!-- عرض الذكر -->
+      <section class="dhikr-section" aria-label="الذكر الحالي">
+        <div class="dhikr-card">
+          <p class="dhikr-label">الذكر الحالي</p>
+          <h2 id="dhikr-name" class="dhikr-name" aria-live="polite">سبحان الله</h2>
+          <p id="dhikr-transliteration" class="dhikr-transliteration">Glory be to Allah</p>
+          <div class="dhikr-progress">
+            <div class="dhikr-progress-bar" id="dhikr-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+          </div>
+          <p id="dhikr-remaining" class="dhikr-remaining">متبقي 100</p>
+        </div>
+      </section>
+
+      <!-- العدادات -->
+      <section class="counter-section" aria-label="العدادات">
+        <div class="counter-grid">
+          <div class="counter-card current-counter">
+            <p class="counter-label">العدد الحالي</p>
+            <p id="current-count" class="counter-value" aria-live="polite">0</p>
+            <p class="counter-suffix">/ 100</p>
+          </div>
+          <div class="counter-card total-counter">
+            <p class="counter-label">إجمالي الضغطات</p>
+            <p id="total-count" class="counter-value" aria-live="polite">0</p>
+            <p class="counter-suffix">إجمالي</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- الزر الرئيسي -->
+      <section class="button-section" aria-label="زر العد">
+        <button 
+          id="count-btn" 
+          class="count-btn" 
+          aria-label="زيادة العداد"
+          aria-pressed="false"
+        >
+          <span class="count-btn-inner">
+            <span class="count-btn-text">اضغط</span>
+            <span class="count-btn-ripple" aria-hidden="true"></span>
+          </span>
+        </button>
+        <p class="button-hint">اضغط الزر أو اضغط على مسافة / إدخال</p>
+      </section>
+
+      <!-- التصنيف العالمي -->
+      <section class="ranking-section" aria-label="لوحة المتصدرين العالمية">
+        <div class="ranking-header">
+          <h2 class="ranking-title">
+            <span aria-hidden="true">🏆</span> التصنيف العالمي
+          </h2>
+          <p class="ranking-subtitle">أفضل الدول حسب إجمالي الأذكار</p>
+        </div>
+        <div class="ranking-list" id="ranking-list" role="list" aria-label="ترتيب الدول"></div>
+      </section>
+    </main>
+
+    <!-- التذييل -->
+    <footer class="app-footer" role="contentinfo">
+      <p>صُنع بـ <span aria-hidden="true">💚</span> للأمة الإسلامية</p>
+    </footer>
+  </div>
+
+  <!-- Scripts -->
+  <script src="script.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(reg => console.log('SW registered:', reg.scope))
+          .catch(err => console.log('SW registration failed:', err));
+      });
+    }
+  </script>
+</body>
+</html>
