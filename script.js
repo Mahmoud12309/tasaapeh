@@ -1,14 +1,14 @@
 /**
  * ============================================
  * عداد التسبيح الرقمي - SCRIPT.JS
- * نسخة مُصلحة 100% - شغالة مع Firebase
+ * نسخة Google Sheets API كاملة - تصنيف عالمي حقيقي
  * ============================================
  */
 
 // ============================================
-// الإعدادات - عدّل هنا فقط
+// إعدادات API - عدّل هنا فقط
 // ============================================
-console.log("صلي ع النبي ");
+
 const CONFIG = {
   DHIKR_CYCLE_SIZE: 100,
   ENCOURAGEMENT_INTERVAL: 10,
@@ -29,29 +29,10 @@ const CONFIG = {
   VIBRATION_DURATION: 15,
 
   // ============================================
-  // إعدادات Cactus API + Firebase
+  // Google Apps Script Web App URL
+  // ضع الرابط هنا بعد ما تنشر الـ Script
   // ============================================
-  API: {
-    // Cactus API Key
-    API_KEY: 'cactus_live_02814c86e511017177e4c4d735cd1d31',
-
-    // Firebase Firestore URL
-    BASE_URL: 'https://firestore.googleapis.com/v1/projects/tasapeh-56e44/databases/(default)/documents',
-
-    // Firestore REST API endpoints
-    ENDPOINTS: {
-      // التصنيف العالمي - مجموعة countries
-      RANKING: '/countries',
-      // إحصائيات المستخدم - مجموعة users  
-      USER_STATS: '/users',
-      // تسجيل عداد - مجموعة counts
-      INCREMENT: '/counts'
-    },
-
-    TIMEOUT: 10000,
-    RETRY_ATTEMPTS: 2,
-    RETRY_DELAY: 1000
-  }
+  API_URL: 'https://script.google.com/macros/s/AKfycbxZ_RD-fMmnsL9U1Bp8FJhKDLnuHSAc8ChSvJq-JQ4e6FIni5AJzLA23oTCrVOoNhOrXQ/exec'
 };
 
 // قائمة الأذكار
@@ -259,7 +240,7 @@ const COUNTRIES = [
 // إدارة الحالة
 // ============================================
 
-const AppState = {
+var AppState = {
   currentDhikrIndex: 0,
   currentDhikrCount: 0,
   totalClicks: 0,
@@ -268,7 +249,6 @@ const AppState = {
   soundEnabled: true,
   isFirstVisit: true,
   userId: null,
-  pendingSync: [],
 
   setState: function(updates) {
     Object.assign(this, updates);
@@ -285,8 +265,7 @@ const AppState = {
         theme: this.theme,
         soundEnabled: this.soundEnabled,
         isFirstVisit: false,
-        userId: this.userId,
-        pendingSync: this.pendingSync
+        userId: this.userId
       };
       localStorage.setItem(CONFIG.STORAGE_KEYS.FIRST_VISIT, JSON.stringify(data));
     } catch (e) {
@@ -308,7 +287,6 @@ const AppState = {
         this.soundEnabled = data.soundEnabled !== undefined ? data.soundEnabled : true;
         this.isFirstVisit = false;
         this.userId = data.userId || null;
-        this.pendingSync = data.pendingSync || [];
       }
     } catch (e) {
       console.warn('فشل في تحميل الحالة:', e);
@@ -317,96 +295,35 @@ const AppState = {
 };
 
 // ============================================
-// Firebase API Client
+// Google Apps Script API Client
 // ============================================
 
-const FirebaseAPI = {
-  isAvailable: function() {
-    return CONFIG.API.BASE_URL && CONFIG.API.BASE_URL.length > 0;
+var GASAPI = {
+  isConfigured: function() {
+    return CONFIG.API_URL && CONFIG.API_URL.indexOf('XXXXXXXX') === -1;
   },
 
-  getOrCreateUserId: function() {
-    if (!AppState.userId) {
-      AppState.userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      AppState.persist();
-    }
-    return AppState.userId;
-  },
-
-  getHeaders: function() {
-    var headers = {
-      'Content-Type': 'application/json'
-    };
-    return headers;
-  },
-
-  // إنشاء document ID آمن لـ Firestore
-  makeDocId: function(countryCode) {
-    return countryCode;
-  },
-
-  // تحويل الرقم لـ Firestore format
-  toFirestoreValue: function(num) {
-    return { integerValue: String(num) };
-  },
-
-  // جلب التصنيف من Firestore
+  // GET - جلب التصنيف
   getRanking: function() {
     var self = this;
     return new Promise(function(resolve, reject) {
-      if (!self.isAvailable()) {
+      if (!self.isConfigured()) {
         reject(new Error('API not configured'));
         return;
       }
 
-      var url = CONFIG.API.BASE_URL + CONFIG.API.ENDPOINTS.RANKING;
       var xhr = new XMLHttpRequest();
-
-      xhr.timeout = CONFIG.API.TIMEOUT;
-      xhr.open('GET', url, true);
+      xhr.timeout = 10000;
+      xhr.open('GET', CONFIG.API_URL, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
 
       xhr.onload = function() {
         if (xhr.status === 200) {
           try {
             var response = JSON.parse(xhr.responseText);
-            var documents = response.documents || [];
-            var rankingData = [];
-
-            documents.forEach(function(doc, index) {
-              var fields = doc.fields || {};
-              var countryCode = doc.name.split('/').pop();
-              var totalClicks = 0;
-
-              if (fields.count && fields.count.integerValue) {
-                totalClicks = parseInt(fields.count.integerValue, 10);
-              } else if (fields.count && fields.count.doubleValue) {
-                totalClicks = Math.floor(fields.count.doubleValue);
-              }
-
-              rankingData.push({
-                rank: index + 1,
-                countryCode: countryCode,
-                totalClicks: totalClicks
-              });
-            });
-
-            // ترتيب تنازلي
-            rankingData.sort(function(a, b) {
-              return b.totalClicks - a.totalClicks;
-            });
-
-            // إعادة ترتيب المراكز
-            rankingData.forEach(function(item, idx) {
-              item.rank = idx + 1;
-            });
-
-            resolve({
-              success: true,
-              data: rankingData
-            });
+            resolve(response);
           } catch (e) {
-            reject(e);
+            reject(new Error('Invalid JSON response'));
           }
         } else {
           reject(new Error('HTTP ' + xhr.status));
@@ -415,103 +332,32 @@ const FirebaseAPI = {
 
       xhr.onerror = function() { reject(new Error('Network error')); };
       xhr.ontimeout = function() { reject(new Error('Timeout')); };
-
       xhr.send();
     });
   },
 
-  // زيادة عداد دولة في Firestore
-  incrementCount: function(countryCode, dhikrId) {
+  // POST - زيادة عداد دولة
+  incrementCount: function(countryCode) {
     var self = this;
     return new Promise(function(resolve, reject) {
-      if (!self.isAvailable() || !countryCode) {
+      if (!self.isConfigured()) {
         reject(new Error('API not configured'));
         return;
       }
-
-      var docId = self.makeDocId(countryCode);
-      var url = CONFIG.API.BASE_URL + CONFIG.API.ENDPOINTS.RANKING + '/' + docId;
-
-      // أولاً: نجلب العدد الحالي
-      var getXhr = new XMLHttpRequest();
-      getXhr.timeout = CONFIG.API.TIMEOUT;
-      getXhr.open('GET', url, true);
-      getXhr.setRequestHeader('Content-Type', 'application/json');
-
-      getXhr.onload = function() {
-        var currentCount = 0;
-
-        if (getXhr.status === 200) {
-          try {
-            var doc = JSON.parse(getXhr.responseText);
-            var fields = doc.fields || {};
-            if (fields.count && fields.count.integerValue) {
-              currentCount = parseInt(fields.count.integerValue, 10);
-            }
-          } catch (e) {}
-        }
-
-        // نزيد العدد
-        currentCount += 1;
-
-        // نرسل العدد الجديد
-        var patchXhr = new XMLHttpRequest();
-        patchXhr.timeout = CONFIG.API.TIMEOUT;
-        patchXhr.open('PATCH', url + '?updateMask.fieldPaths=count', true);
-        patchXhr.setRequestHeader('Content-Type', 'application/json');
-
-        patchXhr.onload = function() {
-          if (patchXhr.status === 200 || patchXhr.status === 201) {
-            resolve({
-              success: true,
-              newTotal: currentCount,
-              countryCode: countryCode
-            });
-          } else {
-            reject(new Error('HTTP ' + patchXhr.status));
-          }
-        };
-
-        patchXhr.onerror = function() { reject(new Error('Network error')); };
-        patchXhr.ontimeout = function() { reject(new Error('Timeout')); };
-
-        patchXhr.send(JSON.stringify({
-          fields: {
-            count: { integerValue: String(currentCount) },
-            lastUpdated: { timestampValue: new Date().toISOString() },
-            countryCode: { stringValue: countryCode }
-          }
-        }));
-      };
-
-      getXhr.onerror = function() { reject(new Error('Network error')); };
-      getXhr.ontimeout = function() { reject(new Error('Timeout')); };
-
-      getXhr.send();
-    });
-  },
-
-  // تسجيل عداد مستخدم
-  recordCount: function(countryCode, dhikrId) {
-    var self = this;
-    return new Promise(function(resolve, reject) {
-      if (!self.isAvailable() || !countryCode) {
-        reject(new Error('API not configured'));
-        return;
-      }
-
-      var url = CONFIG.API.BASE_URL + CONFIG.API.ENDPOINTS.INCREMENT;
-      var docId = self.getOrCreateUserId() + '_' + Date.now();
-      var docUrl = url + '/' + docId;
 
       var xhr = new XMLHttpRequest();
-      xhr.timeout = CONFIG.API.TIMEOUT;
-      xhr.open('POST', docUrl, true);
+      xhr.timeout = 10000;
+      xhr.open('POST', CONFIG.API_URL, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
 
       xhr.onload = function() {
-        if (xhr.status === 200 || xhr.status === 201) {
-          resolve({ success: true });
+        if (xhr.status === 200) {
+          try {
+            var response = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (e) {
+            reject(new Error('Invalid JSON response'));
+          }
         } else {
           reject(new Error('HTTP ' + xhr.status));
         }
@@ -521,12 +367,7 @@ const FirebaseAPI = {
       xhr.ontimeout = function() { reject(new Error('Timeout')); };
 
       xhr.send(JSON.stringify({
-        fields: {
-          userId: { stringValue: self.getOrCreateUserId() },
-          countryCode: { stringValue: countryCode },
-          dhikrId: { stringValue: dhikrId },
-          timestamp: { timestampValue: new Date().toISOString() }
-        }
+        countryCode: countryCode
       }));
     });
   }
@@ -795,19 +636,20 @@ var CountrySelector = {
 };
 
 // ============================================
-// نظام التصنيف - مع Firebase
+// نظام التصنيف العالمي - Google Sheets API
 // ============================================
 
 var RankingSystem = {
   rankingData: [],
   isLoading: false,
-  lastSyncTime: null,
   apiConnected: false,
+  lastSyncTime: null,
 
   init: function() {
     this.loadFromStorage();
     this.render();
     this.syncWithBackend();
+    // تحديث كل 30 ثانية
     var self = this;
     setInterval(function() { self.syncWithBackend(); }, 30000);
   },
@@ -819,8 +661,6 @@ var RankingSystem = {
         var parsed = JSON.parse(stored);
         this.rankingData = parsed.data || [];
         this.lastSyncTime = parsed.timestamp || null;
-      } else {
-        this.rankingData = [];
       }
     } catch (e) {
       this.rankingData = [];
@@ -833,15 +673,13 @@ var RankingSystem = {
         data: this.rankingData,
         timestamp: Date.now()
       }));
-    } catch (e) {
-      console.warn('فشل في حفظ التصنيف:', e);
-    }
+    } catch (e) {}
   },
 
   syncWithBackend: function() {
     var self = this;
 
-    if (!FirebaseAPI.isAvailable()) {
+    if (!GASAPI.isConfigured()) {
       this.apiConnected = false;
       this.render();
       return;
@@ -850,7 +688,7 @@ var RankingSystem = {
     this.isLoading = true;
     this.render();
 
-    FirebaseAPI.getRanking().then(function(result) {
+    GASAPI.getRanking().then(function(result) {
       if (result.success && Array.isArray(result.data)) {
         self.rankingData = result.data.map(function(item) {
           var country = COUNTRIES.find(function(c) { return c.code === item.countryCode; });
@@ -859,7 +697,7 @@ var RankingSystem = {
             countryCode: item.countryCode,
             countryName: country ? country.name : item.countryCode,
             flag: country ? country.flag : '🏳️',
-            totalClicks: item.totalClicks
+            totalClicks: item.count || item.totalClicks || 0
           };
         });
         self.apiConnected = true;
@@ -869,7 +707,7 @@ var RankingSystem = {
       self.isLoading = false;
       self.render();
     }).catch(function(error) {
-      console.warn('تعذر الاتصال بـ Firebase:', error);
+      console.warn('تعذر الاتصال بالخادم:', error);
       self.apiConnected = false;
       self.isLoading = false;
       self.render();
@@ -878,14 +716,16 @@ var RankingSystem = {
 
   incrementCountryClicks: function(countryCode) {
     if (!countryCode) return;
+
+    // تحديث محلي فوري
     this.updateLocalRanking(countryCode);
 
-    if (FirebaseAPI.isAvailable()) {
-      var self = this;
-      FirebaseAPI.incrementCount(countryCode, DHIKR_LIST[AppState.currentDhikrIndex].id)
+    // إرسال للخادم
+    if (GASAPI.isConfigured()) {
+      GASAPI.incrementCount(countryCode)
         .then(function(result) {
           if (result.success) {
-            self.syncWithBackend();
+            console.log('Count incremented on server:', result);
           }
         })
         .catch(function(error) {
@@ -951,13 +791,13 @@ var RankingSystem = {
       return;
     }
 
-    var isApiConfigured = FirebaseAPI.isAvailable();
+    var isApiConfigured = GASAPI.isConfigured();
 
     if (!isApiConfigured && this.rankingData.length === 0) {
       DOM.rankingList.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--color-text-muted)">' +
-        '<div style="font-size:2rem;margin-bottom:0.5rem">📊</div>' +
-        '<div style="font-weight:600;margin-bottom:0.25rem">التصنيف المحلي</div>' +
-        '<div style="font-size:0.875rem">ابدأ العد ليظهر تصنيف بلدك</div></div>';
+        '<div style="font-size:2rem;margin-bottom:0.5rem">⚙️</div>' +
+        '<div style="font-weight:600;margin-bottom:0.25rem">API غير مُعد</div>' +
+        '<div style="font-size:0.875rem">أضف رابط Google Apps Script في الكود</div></div>';
       return;
     }
 
@@ -1286,13 +1126,8 @@ var EventHandlers = {
 var App = {
   init: function() {
     try {
-      // أولاً: نجهز DOM
       initDOM();
-
-      // نحمّل الحالة
       AppState.load();
-
-      // نشغل المديرين
       ThemeManager.init();
       SoundManager.init();
       CountrySelector.init();
@@ -1300,19 +1135,15 @@ var App = {
       DhikrManager.updateDisplay();
       EventHandlers.init();
 
-      // نخفي شاشة التحميل
       this.showSplash().then(function() {
-        // نفتح مودال الدولة لو لسه مختارش
         if (!AppState.selectedCountry) {
           CountrySelector.openModal();
         }
-        // نظهر التطبيق
         App.revealApp();
       });
 
     } catch (error) {
       console.error('خطأ في تهيئة التطبيق:', error);
-      // حتى لو فيه خطأ، نخفي السبلاش ونظهر التطبيق
       if (DOM.splashScreen) DOM.splashScreen.classList.add('hidden');
       App.revealApp();
     }
@@ -1351,7 +1182,7 @@ var App = {
 };
 
 // ============================================
-// التشغيل - لما الصفحة تخلص تحميل
+// التشغيل
 // ============================================
 
 if (document.readyState === 'loading') {
@@ -1359,6 +1190,5 @@ if (document.readyState === 'loading') {
     App.init();
   });
 } else {
-  // DOM جاهز بالفعل
   App.init();
 }
